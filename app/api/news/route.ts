@@ -1,0 +1,39 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { supabase } from '@/lib/supabase'
+
+const PAGE_SIZE = 20
+
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url)
+  const page = Math.max(0, parseInt(searchParams.get('page') ?? '0', 10))
+  const tag = searchParams.get('tag') ?? null
+
+  let query = supabase
+    .from('news_items')
+    .select('*, news_item_tags(tech_tags(*))', { count: 'exact' })
+    .eq('is_filtered', true)
+    .order('impact_score', { ascending: false })
+    .order('published_at', { ascending: false })
+    .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+
+  if (tag) {
+    // Filter by tag name using the denormalized tags[] column for performance
+    query = query.contains('tags', [tag])
+  }
+
+  const { data, error, count } = await query
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json({
+    data,
+    meta: {
+      page,
+      pageSize: PAGE_SIZE,
+      total: count ?? 0,
+      hasMore: ((count ?? 0) > (page + 1) * PAGE_SIZE),
+    },
+  })
+}

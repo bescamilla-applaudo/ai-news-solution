@@ -8,8 +8,9 @@ celery[redis]>=5.3
 apscheduler>=3.10
 python-dotenv>=1.0
 bleach>=6.0
-langsmith>=0.1resend>=2.0
+resend>=2.0
 # Dev / test
 pytest>=8.0
 pytest-asyncio>=0.23
 pytest-mock>=3.12
+

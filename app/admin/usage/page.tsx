@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { auth } from '@clerk/nextjs/server'
+import { getSession } from '@/lib/auth'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
@@ -40,13 +40,8 @@ function fmtTokens(n: number) {
 }
 
 export default async function AdminUsagePage() {
-  const { userId, sessionClaims } = await auth()
-
-  if (!userId) redirect('/sign-in')
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const role = (sessionClaims as any)?.metadata?.role
-  if (role !== 'admin') redirect('/')
+  const session = await getSession()
+  if (!session) redirect('/login')
 
   const data = await getUsage()
 

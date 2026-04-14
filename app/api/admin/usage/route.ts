@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@clerk/nextjs/server'
+import { getSession } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 
 // Cost per 1M tokens (USD) — update if pricing changes
@@ -18,20 +18,12 @@ function estimateCost(model: string, inputTokens: number, outputTokens: number):
 /**
  * GET /api/admin/usage
  * Returns daily token aggregates and estimated cost per model for the last 30 days.
- * Protected: caller must have Clerk sessionClaims.metadata.role === 'admin'.
+ * Protected: requires valid session cookie (single-user — if you're logged in, you're the admin).
  */
 export async function GET() {
-  const { userId, sessionClaims } = await auth()
-
-  if (!userId) {
+  const session = await getSession()
+  if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  // Admin role check via Clerk public metadata
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const role = (sessionClaims as any)?.metadata?.role
-  if (role !== 'admin') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   const { data, error } = await supabase

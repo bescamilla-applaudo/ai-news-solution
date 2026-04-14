@@ -1,22 +1,24 @@
 'use client'
 
-import { useUser } from '@clerk/nextjs'
-import { SignInButton, UserButton } from '@clerk/nextjs'
+import { useRouter } from 'next/navigation'
+import { Button } from '@/components/ui/button'
 
 export function AuthButtons() {
-  const { isSignedIn, isLoaded } = useUser()
+  const router = useRouter()
 
-  if (!isLoaded) return <div className="w-8 h-8" />
-
-  if (isSignedIn) {
-    return <UserButton />
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' })
+    router.push('/login')
   }
 
   return (
-    <SignInButton mode="modal">
-      <button className="text-xs text-zinc-400 hover:text-zinc-200 border border-zinc-700 px-2.5 py-1 rounded transition-colors">
-        Sign In
-      </button>
-    </SignInButton>
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={logout}
+      className="border-zinc-700 text-zinc-400 hover:text-zinc-100 hover:border-zinc-500 text-xs"
+    >
+      Salir
+    </Button>
   )
 }

@@ -13,6 +13,11 @@ Schedule (from ARCHITECTURE.md §5):
 """
 from __future__ import annotations
 
+import os
+# Disable LangSmith/LangChain telemetry — no data sent to external tracing services
+os.environ.setdefault("LANGCHAIN_TRACING_V2", "false")
+os.environ.setdefault("LANGCHAIN_TRACING", "false")
+
 import asyncio
 import logging
 import signal

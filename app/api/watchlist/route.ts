@@ -1,18 +1,18 @@
-import { auth } from '@clerk/nextjs/server'
+import { getSession } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
 // GET /api/watchlist — returns the list of tag IDs the authenticated user watches
 export async function GET() {
-  const { userId } = await auth()
-  if (!userId) {
+  const session = await getSession()
+  if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   const { data, error } = await supabase
     .from('user_watchlist')
     .select('tech_tag_id, tech_tags(id, name, category)')
-    .eq('user_id', userId)
+    .eq('user_id', session.userId)
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -23,8 +23,8 @@ export async function GET() {
 
 // POST /api/watchlist — add a tag to the authenticated user's watchlist
 export async function POST(request: NextRequest) {
-  const { userId } = await auth()
-  if (!userId) {
+  const session = await getSession()
+  if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
   const { error } = await supabase
     .from('user_watchlist')
     .upsert(
-      { user_id: userId, tech_tag_id },
+      { user_id: session.userId, tech_tag_id },
       { onConflict: 'user_id,tech_tag_id' }
     )
 
@@ -67,8 +67,8 @@ export async function POST(request: NextRequest) {
 
 // DELETE /api/watchlist — remove a tag from the authenticated user's watchlist
 export async function DELETE(request: NextRequest) {
-  const { userId } = await auth()
-  if (!userId) {
+  const session = await getSession()
+  if (!session) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -87,7 +87,7 @@ export async function DELETE(request: NextRequest) {
   const { error } = await supabase
     .from('user_watchlist')
     .delete()
-    .eq('user_id', userId)
+    .eq('user_id', session.userId)
     .eq('tech_tag_id', tech_tag_id)
 
   if (error) {

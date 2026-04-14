@@ -1,4 +1,4 @@
-import { auth } from '@clerk/nextjs/server'
+import { getSession } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ArticleCard } from '@/components/article-card'
@@ -45,8 +45,9 @@ async function getPersonalizedFeed(
 }
 
 export default async function WatchlistPage() {
-  const { userId } = await auth()
-  if (!userId) redirect('/sign-in')
+  const session = await getSession()
+  if (!session) redirect('/login')
+  const { userId } = session!
 
   const [watchedTags, allTags] = await Promise.all([
     getWatchlistTags(userId),

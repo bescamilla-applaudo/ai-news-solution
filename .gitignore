@@ -38,6 +38,12 @@ worker/.venv/
 worker/.env
 .pnpm-debug.log*
 
+# local setup helpers
+setup-docker.sh
+
+# Supabase local state
+supabase/.temp/
+
 # env files — ignore real envs, keep examples
 .env
 .env.local

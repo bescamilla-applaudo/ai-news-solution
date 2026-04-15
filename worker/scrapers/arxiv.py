@@ -18,7 +18,7 @@ from worker.scrapers.rss import RawArticle
 logger = logging.getLogger(__name__)
 
 ARXIV_API_URL = (
-    "http://export.arxiv.org/api/query"
+    "https://export.arxiv.org/api/query"
     "?search_query=cat:cs.AI+OR+cat:cs.CL"
     "&max_results=20"
     "&sortBy=submittedDate"

@@ -85,7 +85,8 @@ async def fetch_rss(url: str, source_name: str) -> list[RawArticle]:
 # ---------------------------------------------------------------------------
 
 RSS_SOURCES: dict[str, str] = {
-    "anthropic": "https://www.anthropic.com/rss.xml",
+    # Anthropic removed their RSS feed — replaced with Hugging Face blog (high-quality technical AI content)
+    "huggingface": "https://huggingface.co/blog/feed.xml",
     "openai": "https://openai.com/news/rss.xml",
 }
 

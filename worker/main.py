@@ -14,6 +14,11 @@ Schedule (from ARCHITECTURE.md §5):
 from __future__ import annotations
 
 import os
+import sys
+# Ensure the project root is in sys.path so `worker.*` imports work regardless
+# of which directory the script is launched from.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 # Disable LangSmith/LangChain telemetry — no data sent to external tracing services
 os.environ.setdefault("LANGCHAIN_TRACING_V2", "false")
 os.environ.setdefault("LANGCHAIN_TRACING", "false")
@@ -21,7 +26,6 @@ os.environ.setdefault("LANGCHAIN_TRACING", "false")
 import asyncio
 import logging
 import signal
-import sys
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv

@@ -1,18 +1,14 @@
-import { getSession } from '@/lib/auth'
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
-// GET /api/watchlist — returns the list of tag IDs the authenticated user watches
-export async function GET() {
-  const session = await getSession()
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+const OWNER_ID = 'owner'
 
+// GET /api/watchlist — returns the list of watched tags
+export async function GET() {
   const { data, error } = await supabase
     .from('user_watchlist')
     .select('tech_tag_id, tech_tags(id, name, category)')
-    .eq('user_id', session.userId)
+    .eq('user_id', OWNER_ID)
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -21,13 +17,8 @@ export async function GET() {
   return NextResponse.json({ data: data ?? [] })
 }
 
-// POST /api/watchlist — add a tag to the authenticated user's watchlist
+// POST /api/watchlist — add a tag to the watchlist
 export async function POST(request: NextRequest) {
-  const session = await getSession()
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
   let body: { tech_tag_id?: string }
   try {
     body = await request.json()
@@ -54,7 +45,7 @@ export async function POST(request: NextRequest) {
   const { error } = await supabase
     .from('user_watchlist')
     .upsert(
-      { user_id: session.userId, tech_tag_id },
+      { user_id: OWNER_ID, tech_tag_id },
       { onConflict: 'user_id,tech_tag_id' }
     )
 
@@ -65,13 +56,8 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ success: true }, { status: 201 })
 }
 
-// DELETE /api/watchlist — remove a tag from the authenticated user's watchlist
+// DELETE /api/watchlist — remove a tag from the watchlist
 export async function DELETE(request: NextRequest) {
-  const session = await getSession()
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
   let body: { tech_tag_id?: string }
   try {
     body = await request.json()
@@ -87,7 +73,7 @@ export async function DELETE(request: NextRequest) {
   const { error } = await supabase
     .from('user_watchlist')
     .delete()
-    .eq('user_id', session.userId)
+    .eq('user_id', OWNER_ID)
     .eq('tech_tag_id', tech_tag_id)
 
   if (error) {

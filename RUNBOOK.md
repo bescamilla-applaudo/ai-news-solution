@@ -5,15 +5,15 @@
 Antes de arrancar, verifica que no haya nada corriendo:
 
 ```bash
-docker ps                          # debe estar vacío
-ss -tlnp | grep -E "543|6379|3000" # no debe mostrar nada
+docker ps                                        # debe estar vacío
+ss -tlnp | grep -E "543|6379|3000|8001" || echo "OK"
 ```
 
 ---
 
 ## Arrancar el proyecto
 
-Abre **4 terminales separadas** en este orden:
+Abre **5 terminales separadas** en este orden:
 
 ### Terminal 1 — Infraestructura (Supabase + Redis)
 
@@ -33,9 +33,20 @@ cd ~/projects/ai-news-solution
 pnpm dev
 ```
 
-Abre **http://localhost:3000** y entra con el `AUTH_PASSWORD` de `.env.local`.
+Abre **http://localhost:3000** — sin login, acceso directo.
 
-### Terminal 3 — Worker Celery (pipeline LangGraph) ⚠️ requiere API keys
+### Terminal 3 — Embed Server (búsqueda semántica local, sin API key)
+
+```bash
+cd ~/projects/ai-news-solution
+source worker/.venv/bin/activate
+python worker/embed_server.py
+```
+
+> Primera vez: descarga el modelo `all-MiniLM-L6-v2` (~80MB). Luego queda en caché.
+> Necesario para que `/search` funcione.
+
+### Terminal 4 — Worker Celery (pipeline LangGraph) ⚠️ requiere OPENROUTER_API_KEY
 
 ```bash
 cd ~/projects/ai-news-solution
@@ -43,10 +54,10 @@ source worker/.venv/bin/activate
 celery -A worker.celery_app.app worker --loglevel=info
 ```
 
-> Sin `ANTHROPIC_API_KEY`, Celery arranca pero las tareas fallan silenciosamente.
-> El frontend sigue funcionando igual.
+> Sin `OPENROUTER_API_KEY` en `worker/.env`, Celery arranca pero las tareas fallan silenciosamente.
+> El frontend sigue mostrando los artículos ya procesados.
 
-### Terminal 4 — APScheduler (scrapers)
+### Terminal 5 — APScheduler (scrapers)
 
 ```bash
 cd ~/projects/ai-news-solution
@@ -55,7 +66,7 @@ python worker/main.py
 ```
 
 > RSS, Arxiv, DeepMind y HN funcionan sin API keys.
-> GitHub scraper necesita `GITHUB_TOKEN` (opcional, cae a 60 req/hr sin él).
+> Los artículos se encolan en Redis y esperan a que Celery los procese.
 
 ---
 
@@ -68,7 +79,7 @@ python worker/main.py
 
 ```bash
 # 1. Procesos del sistema
-pkill -f "next" 2>/dev/null; pkill -f "celery" 2>/dev/null; pkill -f "main.py" 2>/dev/null
+pkill -f "next" 2>/dev/null; pkill -f "celery" 2>/dev/null; pkill -f "main.py" 2>/dev/null; pkill -f "embed_server" 2>/dev/null
 
 # 2. Contenedores Docker
 docker stop ai-news-redis
@@ -78,9 +89,10 @@ export PATH="$HOME/.local/bin:$PATH" && supabase stop
 ### Opción B — Terminal por terminal
 
 1. En la terminal de **Next.js** → `Ctrl+C`
-2. En la terminal de **Celery** → `Ctrl+C`
-3. En la terminal de **APScheduler** → `Ctrl+C`
-4. Luego en cualquier terminal:
+2. En la terminal de **Embed Server** → `Ctrl+C`
+3. En la terminal de **Celery** → `Ctrl+C`
+4. En la terminal de **APScheduler** → `Ctrl+C`
+5. Luego en cualquier terminal:
 
 ```bash
 docker stop ai-news-redis
@@ -91,42 +103,43 @@ export PATH="$HOME/.local/bin:$PATH" && supabase stop
 
 ```bash
 docker ps                                        # debe mostrar tabla vacía
-ss -tlnp | grep -E "543|6379|3000" || echo "OK" # no debe mostrar puertos
-pgrep -la "next|celery|python" || echo "limpio"  # no debe mostrar procesos
+ss -tlnp | grep -E "543|6379|3000|8001" || echo "OK"
+pgrep -la "next|celery|python" || echo "limpio"
 ```
-
-Los tres comandos deben dar salida vacía o "OK/limpio".
 
 ---
 
-## Qué puedes ver SIN API Keys
+## Qué puedes ver SIN OPENROUTER_API_KEY
 
-Con solo las Terminales 1 y 2 activas:
+Con las Terminales 1, 2 y 3 activas:
 
 | URL | Funciona | Contenido |
 |---|---|---|
-| `http://localhost:3000/login` | ✅ | Login local |
-| `http://localhost:3000/` | ✅ | Feed con 5 artículos de muestra |
+| `http://localhost:3000/` | ✅ | Feed con artículos (seed + procesados) |
 | `http://localhost:3000/article/[id]` | ✅ | Vista de detalle completa |
 | `http://localhost:3000/watchlist` | ✅ | Gestión de tecnologías seguidas |
-| `http://localhost:3000/admin/usage` | ✅ | Dashboard de costos LLM |
-| `http://localhost:3000/search?q=rag` | ✅ | Devuelve resultado vacío con mensaje claro |
+| `http://localhost:3000/admin/usage` | ✅ | Dashboard de uso de tokens |
+| `http://localhost:3000/search?q=rag` | ✅ | Búsqueda semántica (requiere Terminal 3) |
 
 ---
 
-## Variables de entorno necesarias por componente
+## Variables de entorno necesarias
 
-| Variable | Archivo | Para qué |
-|---|---|---|
-| `AUTH_SECRET` | `.env.local` | 🔑 JWT firma (ya generado) |
-| `AUTH_PASSWORD` | `.env.local` | 🔑 Contraseña de login (cámbiala de `changeme`) |
-| `SUPABASE_URL` | `.env.local` | DB local (ya configurado) |
-| `SUPABASE_SERVICE_ROLE_KEY` | `.env.local` | DB local (ya configurado) |
-| `OPENAI_API_KEY` | `.env.local` | Solo para búsqueda semántica (`/search`) |
-| `ANTHROPIC_API_KEY` | `worker/.env` | Pipeline LangGraph (categorizar, resumir) |
-| `OPENAI_API_KEY` | `worker/.env` | Embeddings en el pipeline |
-| `GITHUB_TOKEN` | `worker/.env` | Scraper GitHub (opcional) |
-| `RESEND_API_KEY` | `worker/.env` | Email digest semanal (opcional) |
+### `.env.local` (frontend)
+
+| Variable | Para qué |
+|---|---|
+| `SUPABASE_SERVICE_ROLE_KEY` | DB local (ya configurado) |
+| `NEXT_PUBLIC_SUPABASE_URL` | DB local (ya configurado) |
+| `WORKER_EMBED_URL` | URL del embed server (default: http://localhost:8001) |
+
+### `worker/.env` (pipeline)
+
+| Variable | Para qué |
+|---|---|
+| `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | DB local (ya configurado) |
+| `OPENROUTER_API_KEY` | **Pipeline LangGraph** — obtén gratis en https://openrouter.ai/keys |
+| `RESEND_API_KEY` | Email digest semanal (opcional) |
 
 ---
 
@@ -134,8 +147,9 @@ Con solo las Terminales 1 y 2 activas:
 
 ```bash
 cd ~/projects/ai-news-solution
-bash setup-docker.sh   # Terminal 1
-pnpm dev               # Terminal 2
+bash setup-docker.sh          # Terminal 1
+pnpm dev                       # Terminal 2
+python worker/embed_server.py  # Terminal 3 (con venv activado)
 ```
 
-Las terminales 3 y 4 son opcionales hasta que tengas las API keys.
+Las terminales 4 y 5 son opcionales hasta que configures `OPENROUTER_API_KEY`.

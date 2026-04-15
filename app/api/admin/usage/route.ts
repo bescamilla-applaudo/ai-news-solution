@@ -1,12 +1,10 @@
 import { NextResponse } from 'next/server'
-import { getSession } from '@/lib/auth'
 import { supabase } from '@/lib/supabase'
 
-// Cost per 1M tokens (USD) — update if pricing changes
+// Cost per 1M tokens (USD) — OpenRouter free models are $0, kept for future paid models
 const MODEL_COST: Record<string, { input: number; output: number }> = {
-  'claude-haiku-4-5':  { input: 0.80,  output: 4.00  },
-  'claude-opus-4-5':   { input: 15.00, output: 75.00 },
-  'text-embedding-3-small': { input: 0.02, output: 0.00 },
+  'google/gemma-4-31b-it:free':              { input: 0, output: 0 },
+  'nvidia/nemotron-3-super-120b-a12b:free':  { input: 0, output: 0 },
 }
 
 function estimateCost(model: string, inputTokens: number, outputTokens: number): number {
@@ -21,11 +19,6 @@ function estimateCost(model: string, inputTokens: number, outputTokens: number):
  * Protected: requires valid session cookie (single-user — if you're logged in, you're the admin).
  */
 export async function GET() {
-  const session = await getSession()
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
   const { data, error } = await supabase
     .from('llm_usage_log')
     .select('timestamp, model, input_tokens, output_tokens')

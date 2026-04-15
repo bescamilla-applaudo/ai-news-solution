@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import { CommandPalette } from '@/components/command-palette'
 import { NewsFeed } from '@/components/news-feed'
-import { AuthButtons } from '@/components/auth-buttons'
 
 export default function HomePage() {
   return (
@@ -25,7 +24,6 @@ export default function HomePage() {
               >
                 My Watchlist
               </Link>
-              <AuthButtons />
             </div>
           </div>
         </header>

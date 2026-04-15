@@ -5,7 +5,7 @@ Runs every Monday at 00:00 UTC via APScheduler CronTrigger.
 
 Flow:
   1. Query top 10 articles from the past 7 days by impact_score DESC
-  2. Call claude-haiku-4-5 to generate a Markdown digest
+  2. Call OpenRouter (free model) to generate a Markdown digest
   3. Fetch all active email_subscriptions
   4. Send one email per subscriber via Resend
   5. Unsubscribe link uses HMAC-SHA256 token (never raw user_id)
@@ -22,7 +22,7 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 
-import anthropic
+from openai import OpenAI
 import httpx
 
 from worker.db import get_supabase
@@ -62,8 +62,11 @@ def _fetch_top_articles() -> list[dict]:
 
 
 def _generate_digest(articles: list[dict], week_of: str) -> str:
-    """Use claude-haiku-4-5 to generate a Markdown brief from the top articles."""
-    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    """Use OpenRouter (free model) to generate a Markdown brief from the top articles."""
+    client = OpenAI(
+        api_key=os.environ.get("OPENROUTER_API_KEY", ""),
+        base_url="https://openrouter.ai/api/v1",
+    )
 
     article_list = "\n".join(
         f"- [{a['title']}]({a['source_url']}) (Impact: {a.get('impact_score', '?')}/10, "
@@ -84,12 +87,12 @@ Write a brief Markdown email body (no subject line). Format:
 
 Keep it dense, technical, and developer-focused. No hype, no financial news."""
 
-    message = client.messages.create(
-        model="claude-haiku-4-5",
+    response = client.chat.completions.create(
+        model="google/gemma-4-31b-it:free",
         max_tokens=800,
         messages=[{"role": "user", "content": prompt}],
     )
-    return message.content[0].text.strip()
+    return response.choices[0].message.content.strip()
 
 
 def _send_email(to: str, subject: str, html_body: str) -> bool:

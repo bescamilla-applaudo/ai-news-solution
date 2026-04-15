@@ -4,12 +4,12 @@ Worker entry point.
 Starts the APScheduler that periodically enqueues scrape tasks,
 then launches the Celery worker in the same process.
 
-Schedule (from ARCHITECTURE.md §5):
-  - Anthropic + OpenAI RSS feeds  → every 30 minutes
-  - Google DeepMind RSS           → every 30 minutes
-  - Arxiv cs.AI + cs.CL           → every 60 minutes
-  - Hacker News (keyword filter)  → every 60 minutes
-  - GitHub Trending               → every 2 hours
+Schedule:
+  - HuggingFace + OpenAI RSS feeds  → every 30 minutes
+  - Google DeepMind RSS             → every 30 minutes
+  - Arxiv cs.AI + cs.CL             → every 60 minutes
+  - Hacker News (keyword filter)    → every 60 minutes
+  - Weekly Intelligence Brief       → Monday 00:00 UTC
 """
 from __future__ import annotations
 
@@ -36,7 +36,6 @@ from worker.celery_app import app as celery_app  # noqa: E402
 from worker.db import get_supabase  # noqa: E402
 from worker.scrapers.arxiv import scrape_arxiv  # noqa: E402
 from worker.scrapers.deepmind import fetch_deepmind  # noqa: E402
-from worker.scrapers.github_trending import fetch_github_trending  # noqa: E402
 from worker.scrapers.hn import fetch_hn  # noqa: E402
 from worker.scrapers.rss import fetch_all_rss  # noqa: E402
 from worker.tasks.process_article import process_article  # noqa: E402
@@ -150,38 +149,13 @@ def _enqueue_hn() -> None:
         logger.exception("HN scrape job failed")
 
 
-def _enqueue_github() -> None:
-    """Fetch GitHub Trending repos and submit as Celery tasks."""
-    logger.info("Scheduler: fetching GitHub Trending")
-    try:
-        repos = asyncio.run(fetch_github_trending())
-        seen = _already_seen([r["source_url"] for r in repos])
-        new_repos = [r for r in repos if r["source_url"] not in seen]
-        for repo in new_repos:
-            process_article.apply_async(
-                kwargs={
-                    "source_url": repo["source_url"],
-                    "source_name": repo["source_name"],
-                    "title": repo["title"],
-                    "raw_content": repo["raw_content"],
-                    "published_at": repo["published_at"],
-                }
-            )
-        logger.info("Scheduler: enqueued %d/%d new GitHub repos", len(new_repos), len(repos))
-    except Exception:
-        logger.exception("GitHub Trending scrape job failed")
-
-
 def main() -> None:
     scheduler = BackgroundScheduler()
-    # Existing sources
     scheduler.add_job(_enqueue_rss, "interval", minutes=30, id="rss_feed", replace_existing=True)
     scheduler.add_job(_enqueue_arxiv, "interval", minutes=60, id="arxiv_scrape", replace_existing=True)
-    # Phase 3 sources
     scheduler.add_job(_enqueue_deepmind, "interval", minutes=30, id="deepmind_feed", replace_existing=True)
     scheduler.add_job(_enqueue_hn, "interval", minutes=60, id="hn_scrape", replace_existing=True)
-    scheduler.add_job(_enqueue_github, "interval", hours=2, id="github_trending", replace_existing=True)
-    # Phase 4: weekly brief every Monday at 00:00 UTC
+    # Weekly brief every Monday at 00:00 UTC
     scheduler.add_job(
         send_weekly_brief,
         "cron",
@@ -199,7 +173,6 @@ def main() -> None:
     _enqueue_deepmind()
     _enqueue_arxiv()
     _enqueue_hn()
-    _enqueue_github()
 
     def _shutdown(signum, frame):  # noqa: ANN001
         logger.info("Shutdown signal received")

@@ -1,5 +1,3 @@
-import { redirect } from 'next/navigation'
-import { getSession } from '@/lib/auth'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
@@ -40,9 +38,6 @@ function fmtTokens(n: number) {
 }
 
 export default async function AdminUsagePage() {
-  const session = await getSession()
-  if (!session) redirect('/login')
-
   const data = await getUsage()
 
   // Compute the max daily cost for Progress bar scaling

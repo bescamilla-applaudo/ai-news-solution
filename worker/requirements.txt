@@ -1,6 +1,6 @@
 langgraph>=0.2
-anthropic>=0.49
-openai>=1.70
+openai>=1.70          # used as OpenRouter client (compatible API)
+sentence-transformers>=3.0  # local embeddings, no API key (all-MiniLM-L6-v2, 384 dims)
 httpx>=0.28
 feedparser>=6.0
 supabase>=2.0

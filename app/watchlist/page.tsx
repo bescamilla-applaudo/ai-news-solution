@@ -1,5 +1,3 @@
-import { getSession } from '@/lib/auth'
-import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ArticleCard } from '@/components/article-card'
 import { WatchlistManager } from '@/components/watchlist-manager'
@@ -44,18 +42,16 @@ async function getPersonalizedFeed(
   return (data as NewsItemWithTags[]) ?? []
 }
 
-export default async function WatchlistPage() {
-  const session = await getSession()
-  if (!session) redirect('/login')
-  const { userId } = session!
+const OWNER_ID = 'owner'
 
+export default async function WatchlistPage() {
   const [watchedTags, allTags] = await Promise.all([
-    getWatchlistTags(userId),
+    getWatchlistTags(OWNER_ID),
     getAllTags(),
   ])
 
   const watchedTagIds = watchedTags.map((t) => t.id)
-  const articles = await getPersonalizedFeed(userId, watchedTagIds)
+  const articles = await getPersonalizedFeed(OWNER_ID, watchedTagIds)
 
   return (
     <div className="min-h-screen bg-zinc-950">

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
-import OpenAI from 'openai'
 
 export async function GET(request: NextRequest) {
   const query = new URL(request.url).searchParams.get('q')?.trim()
@@ -8,27 +7,31 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data: [] })
   }
 
-  if (!process.env.OPENAI_API_KEY) {
-    return NextResponse.json(
-      { data: [], error: 'Semantic search unavailable: OPENAI_API_KEY not configured.' },
-      { status: 200 }
-    )
-  }
-
   try {
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+    // Call the Python worker embedding endpoint for local sentence-transformers
+    const embedRes = await fetch(
+      `${process.env.WORKER_EMBED_URL ?? 'http://localhost:8001'}/embed`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: query }),
+        signal: AbortSignal.timeout(5000),
+      }
+    )
 
-    // Generate embedding for the search query
-    const embeddingResponse = await openai.embeddings.create({
-      model: 'text-embedding-3-small',
-      input: query,
-    })
-    const queryEmbedding = embeddingResponse.data[0].embedding
+    if (!embedRes.ok) {
+      return NextResponse.json(
+        { data: [], error: 'Embedding service unavailable' },
+        { status: 200 }
+      )
+    }
+
+    const { embedding } = await embedRes.json()
 
     // Cosine similarity search via pgvector RPC
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error } = await (supabase as any).rpc('match_articles', {
-      query_embedding: queryEmbedding,
+      query_embedding: embedding,
       match_count: 10,
       filter_id: null,
     })
@@ -40,7 +43,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data: data ?? [] })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Search failed'
-    // Return empty results so the UI stays functional rather than crashing
     return NextResponse.json({ data: [], error: message }, { status: 200 })
   }
 }

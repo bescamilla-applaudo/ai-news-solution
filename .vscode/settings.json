@@ -1,4 +1,14 @@
 {
   "terminal.integrated.persistentSessionReviveProcess": "never",
-  "python.terminal.activateEnvironment": false
+  "python.terminal.activateEnvironment": false,
+  "files.exclude": {
+    "**/.env": true,
+    "**/.env.local": true,
+    "worker/.env": true
+  },
+  "search.exclude": {
+    "**/.env": true,
+    "**/.env.local": true,
+    "worker/.env": true
+  }
 }

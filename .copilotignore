@@ -1,0 +1,9 @@
+# Prevent GitHub Copilot from reading secrets
+.env
+.env.local
+.env.*
+!.env.example
+!.env.*.example
+worker/.env
+worker/.env.*
+!worker/.env.example

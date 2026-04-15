@@ -54,7 +54,7 @@ source worker/.venv/bin/activate
 celery -A worker.celery_app.app worker --loglevel=info
 ```
 
-> Sin `OPENROUTER_API_KEY` en `worker/.env`, Celery arranca pero las tareas fallan silenciosamente.
+> Sin `OPENROUTER_API_KEY` en `worker/.env`, Celery arranca pero cada tarea fallará con `EnvironmentError: OPENROUTER_API_KEY is not set`.
 > El frontend sigue mostrando los artículos ya procesados.
 
 ### Terminal 5 — APScheduler (scrapers)
@@ -147,9 +147,9 @@ Con las Terminales 1, 2 y 3 activas:
 
 ```bash
 cd ~/projects/ai-news-solution
-bash setup-docker.sh          # Terminal 1
-pnpm dev                       # Terminal 2
-python worker/embed_server.py  # Terminal 3 (con venv activado)
+bash setup-docker.sh                                          # Terminal 1
+pnpm dev                                                       # Terminal 2
+source worker/.venv/bin/activate && python worker/embed_server.py  # Terminal 3
 ```
 
 Las terminales 4 y 5 son opcionales hasta que configures `OPENROUTER_API_KEY`.

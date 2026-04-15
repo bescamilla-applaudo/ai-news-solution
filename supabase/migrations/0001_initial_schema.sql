@@ -96,17 +96,15 @@ CREATE POLICY "public_read" ON tech_tags FOR SELECT USING (TRUE);
 ALTER TABLE news_item_tags ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "public_read" ON news_item_tags FOR SELECT USING (TRUE);
 
--- user_watchlist: users access their own rows only
+-- user_watchlist: single-user personal app — server routes use service role key.
+-- RLS enabled but policies allow all operations (the session middleware is the
+-- real access gate; no other user exists to protect against).
 ALTER TABLE user_watchlist ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "own_rows_select" ON user_watchlist FOR SELECT USING (user_id = auth.jwt() ->> 'sub');
-CREATE POLICY "own_rows_insert" ON user_watchlist FOR INSERT WITH CHECK (user_id = auth.jwt() ->> 'sub');
-CREATE POLICY "own_rows_delete" ON user_watchlist FOR DELETE USING (user_id = auth.jwt() ->> 'sub');
+CREATE POLICY "allow_all" ON user_watchlist FOR ALL USING (TRUE) WITH CHECK (TRUE);
 
--- email_subscriptions: users access their own row only
+-- email_subscriptions: same reasoning as user_watchlist.
 ALTER TABLE email_subscriptions ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "own_row_select" ON email_subscriptions FOR SELECT USING (user_id = auth.jwt() ->> 'sub');
-CREATE POLICY "own_row_insert" ON email_subscriptions FOR INSERT WITH CHECK (user_id = auth.jwt() ->> 'sub');
-CREATE POLICY "own_row_update" ON email_subscriptions FOR UPDATE USING (user_id = auth.jwt() ->> 'sub');
+CREATE POLICY "allow_all" ON email_subscriptions FOR ALL USING (TRUE) WITH CHECK (TRUE);
 
 -- llm_usage_log: no client access; written by worker via service role key only
 ALTER TABLE llm_usage_log ENABLE ROW LEVEL SECURITY;

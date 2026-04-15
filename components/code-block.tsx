@@ -37,7 +37,7 @@ export async function CodeBlock({ code, language }: CodeBlockProps) {
 
   return (
     <div
-      className="rounded-lg overflow-x-auto border border-zinc-800 text-xs [&>pre]:p-4 [&>pre]:!bg-zinc-950 [&>pre]:m-0 [&>pre]:leading-relaxed"
+      className="rounded-lg overflow-x-auto border border-zinc-800 text-xs [&>pre]:p-4 [&>pre]:bg-zinc-950! [&>pre]:m-0 [&>pre]:leading-relaxed"
       // shiki output is sanitized: escapes all code content, only adds its own spans
       dangerouslySetInnerHTML={{ __html: html }}
     />

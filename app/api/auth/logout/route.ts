@@ -3,5 +3,7 @@ import { NextResponse } from 'next/server'
 
 export async function POST() {
   await deleteSession()
-  return NextResponse.redirect(new URL('/login', process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'))
+  // Return 200 so the client-side fetch() resolves cleanly.
+  // The AuthButtons component handles the redirect to /login.
+  return NextResponse.json({ ok: true })
 }

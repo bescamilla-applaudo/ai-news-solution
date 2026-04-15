@@ -44,6 +44,11 @@ SUMMARIZER_MODEL  = "nvidia/nemotron-3-super-120b-a12b:free"
 
 def _openrouter() -> OpenAI:
     api_key = os.environ.get("OPENROUTER_API_KEY", "")
+    if not api_key or api_key.startswith("REPLACE_"):
+        raise EnvironmentError(
+            "OPENROUTER_API_KEY is not set or is still the placeholder value.\n"
+            "Get a free key at https://openrouter.ai/keys and add it to worker/.env"
+        )
     return OpenAI(
         api_key=api_key,
         base_url=OPENROUTER_BASE_URL,

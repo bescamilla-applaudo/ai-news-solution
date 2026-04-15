@@ -16,8 +16,6 @@ Upgrade to Resend Starter ($20/mo) for 50K emails/month.
 """
 from __future__ import annotations
 
-import hashlib
-import hmac
 import logging
 import os
 from datetime import datetime, timedelta, timezone
@@ -31,18 +29,6 @@ logger = logging.getLogger(__name__)
 
 RESEND_API_URL = "https://api.resend.com/emails"
 RESEND_DAILY_CAP = 100
-
-
-def _make_unsubscribe_token(user_id: str) -> str:
-    """HMAC-SHA256 token matching the Next.js /api/unsubscribe route logic."""
-    secret = os.environ.get("UNSUBSCRIBE_SECRET", "")
-    return hmac.new(secret.encode(), user_id.encode(), hashlib.sha256).hexdigest()
-
-
-def _build_unsubscribe_url(user_id: str) -> str:
-    base_url = os.environ.get("NEXT_PUBLIC_APP_URL", "https://your-domain.com")
-    token = _make_unsubscribe_token(user_id)
-    return f"{base_url}/api/unsubscribe?token={token}&uid={user_id}"
 
 
 def _fetch_top_articles() -> list[dict]:
@@ -174,16 +160,12 @@ def send_weekly_brief() -> None:
     sent = 0
 
     for sub in subscribers:
-        unsubscribe_url = _build_unsubscribe_url(sub["user_id"])
         html = (
             '<div style="font-family:sans-serif;max-width:600px;margin:0 auto;'
             'color:#e4e4e7;background:#09090b;padding:32px">'
             f'<h2 style="font-size:16px;font-weight:600;margin-bottom:16px">{subject}</h2>'
             + _markdown_to_html(digest_md)
-            + f'<hr style="border-color:#27272a;margin:24px 0">'
-            f'<p style="font-size:11px;color:#71717a">'
-            f'<a href="{unsubscribe_url}" style="color:#71717a">Unsubscribe</a>'
-            f'</p></div>'
+            + '</div>'
         )
         if _send_email(sub["email"], subject, html):
             sent += 1

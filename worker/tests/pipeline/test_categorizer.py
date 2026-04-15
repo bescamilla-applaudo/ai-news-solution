@@ -4,7 +4,7 @@ Signal accuracy test for the categorizer node.
 Validates that the noise filter achieves ≥ 95% accuracy on 20 fixture articles.
 Run with: pytest worker/tests/pipeline/test_categorizer.py -v
 
-Requires ANTHROPIC_API_KEY in the environment.
+Requires OPENROUTER_API_KEY in the environment.
 """
 from __future__ import annotations
 
@@ -303,8 +303,8 @@ def _make_state(article: dict) -> PipelineState:
 # ---------------------------------------------------------------------------
 
 @pytest.mark.skipif(
-    not os.environ.get("ANTHROPIC_API_KEY"),
-    reason="ANTHROPIC_API_KEY not set",
+    not os.environ.get("OPENROUTER_API_KEY"),
+    reason="OPENROUTER_API_KEY not set",
 )
 def test_technical_articles_are_classified_correctly():
     """All 10 technical articles must be classified as 'Technical'."""
@@ -323,8 +323,8 @@ def test_technical_articles_are_classified_correctly():
 
 
 @pytest.mark.skipif(
-    not os.environ.get("ANTHROPIC_API_KEY"),
-    reason="ANTHROPIC_API_KEY not set",
+    not os.environ.get("OPENROUTER_API_KEY"),
+    reason="OPENROUTER_API_KEY not set",
 )
 def test_non_technical_articles_are_filtered_out():
     """All 10 non-technical articles must NOT be classified as 'Technical'."""
@@ -344,8 +344,8 @@ def test_non_technical_articles_are_filtered_out():
 
 
 @pytest.mark.skipif(
-    not os.environ.get("ANTHROPIC_API_KEY"),
-    reason="ANTHROPIC_API_KEY not set",
+    not os.environ.get("OPENROUTER_API_KEY"),
+    reason="OPENROUTER_API_KEY not set",
 )
 def test_overall_signal_accuracy():
     """Combined accuracy across all 20 articles must be ≥ 95%."""

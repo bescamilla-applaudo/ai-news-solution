@@ -1,10 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-
-const mockSelect = vi.fn()
-const mockEq = vi.fn()
-const mockUpsert = vi.fn()
-const mockDelete = vi.fn()
-const mockSingle = vi.fn()
+import { describe, it, expect, vi } from 'vitest'
 
 // Build a chain mock for Supabase
 function makeChain(terminalResult: unknown) {

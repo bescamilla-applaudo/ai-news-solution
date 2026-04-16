@@ -29,6 +29,15 @@ export async function GET(request: NextRequest) {
   const { data, error, count } = await query
 
   if (error) {
+    // Supabase returns 416 when range exceeds available rows — return empty page
+    if (error.message?.includes('range') || error.code === 'PGRST103') {
+      return NextResponse.json({
+        data: [],
+        meta: { page, pageSize: PAGE_SIZE, total: 0, hasMore: false },
+      }, {
+        headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
+      })
+    }
     console.error('[/api/news] Supabase error:', error.message)
     return NextResponse.json({ error: 'Failed to fetch articles' }, { status: 500 })
   }

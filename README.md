@@ -97,7 +97,7 @@ Get a free OpenRouter API key at [openrouter.ai/keys](https://openrouter.ai/keys
 ### 3. Start infrastructure
 
 ```bash
-# Terminal 1 — Supabase + Redis
+# Terminal 1 — Supabase + Redis (auto-excludes non-essential services)
 bash setup-docker.sh
 ```
 
@@ -126,10 +126,10 @@ Open **http://localhost:3000** — no login required.
 ### Alternative: Docker Compose
 
 ```bash
-# Start infrastructure first
-bash setup-docker.sh
+# Start Supabase (must run first)
+supabase start --exclude edge-runtime,studio,mailpit,logflare,vector
 
-# Then start all services
+# Then start all services (Redis, embed-server, worker, frontend)
 docker compose up --build
 ```
 

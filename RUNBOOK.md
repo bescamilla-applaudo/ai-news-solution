@@ -42,7 +42,7 @@ La forma más rápida. Solo necesitas Supabase aparte porque corre como CLI.
 
 ```bash
 cd ~/projects/ai-news-solution
-supabase start --exclude edge-runtime,studio,mailpit,logflare
+supabase start --exclude edge-runtime,studio,mailpit,logflare,vector
 ```
 
 Espera `All services are running.`. Copia el `service_role key` del output.
@@ -77,7 +77,7 @@ Espera hasta ver `All services are running.` (~30 seg). Esto inicia:
 - **Supabase** en `http://127.0.0.1:54321` (solo API + PostgreSQL)
 - **Redis** en `127.0.0.1:6379` (localhost only)
 
-> Studio, Mailpit y Analytics se excluyen del arranque para reducir superficie de ataque. Si necesitas Studio temporalmente: `supabase start --exclude edge-runtime`.
+> Studio, Mailpit, Analytics y Vector se excluyen del arranque. Vector depende de logflare (analytics) para enviar logs — sin logflare, Vector no puede arrancar. Si necesitas Studio temporalmente: `supabase start --exclude edge-runtime,vector`.
 
 #### Terminal 2 — Frontend Next.js
 
@@ -228,7 +228,7 @@ cp worker/.env.example worker/.env
 
 ```bash
 cd ~/projects/ai-news-solution
-supabase start --exclude edge-runtime,studio,mailpit,logflare
+supabase start --exclude edge-runtime,studio,mailpit,logflare,vector
 docker compose up --build -d
 ```
 

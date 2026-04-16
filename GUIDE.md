@@ -181,7 +181,7 @@ Una plataforma de inteligencia de noticias de IA que **automáticamente:**
 │                                                                              │
 │  worker/embed_server.py — HTTP server stdlib                                 │
 │  POST /embed {"text":"..."} → {"embedding": [384 floats]}                   │
-│  GET  /health             → {"ok": true}                                    │
+│  GET  /health             → {"ok": true, "model": "all-MiniLM-L6-v2"}      │
 │                                                                              │
 │  Modelo: all-MiniLM-L6-v2 (~80 MB, lazy-loaded, en memoria)                │
 │  Puerto: 127.0.0.1:8001                                                     │
@@ -431,11 +431,13 @@ Muestra:
 - Atajos: `Cmd+K` (Mac) / `Ctrl+K` (Linux/Windows)
 - 300ms debounce → `GET /api/search?q=...`
 - Basado en Shadcn CommandDialog
-- **Degradación graceful:** Si el embed server no está disponible, muestra estado vacío sin errores
+- **AbortController:** Cada keystroke cancela la request anterior via `AbortController.abort()`, eliminando race conditions de requests obsoletos
+- **Degradación graceful:** Si el embed server no está disponible (HTTP 503), muestra estado de error
 
 #### `WatchlistManager` — Gestión de tecnologías seguidas
 
 - Lista de todos los tags con toggles
+- **Per-tag inflight tracking:** Cada tag tiene su propio estado de carga (via `Set<string>`). Solo el botón del tag en vuelo se deshabilita, no todos.
 - **Optimistic updates:** Toggle → actualiza UI inmediatamente → API call → rollback si falla
 - API: `POST/DELETE /api/watchlist` con body `{tag_id, user_id: "owner"}`
 
@@ -571,7 +573,11 @@ LIMIT match_count;
 | **Sanitización de input** | Todo HTML/RSS se limpia con `bleach.clean(tags=[], strip=True)` antes de LLMs. |
 | **Protección XML** | Tamaño de respuesta RSS limitado a 2 MB. `defusedxml` previene XML bombs. |
 | **Prevención XSS** | Código renderizado con `hast-util-to-jsx-runtime`, nunca `dangerouslySetInnerHTML`. |
+| **Content-Security-Policy** | `default-src 'self'`, `script-src 'self' 'unsafe-inline' 'unsafe-eval'`, `connect-src 'self' https://*.supabase.co`, `frame-ancestors 'none'`. Bloquea XSS, clickjacking e inyección de recursos externos. |
 | **Headers de seguridad** | `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`. Camera, mic, geolocation denegados. |
+| **Deployment guard** | `lib/guards.ts` — todas las API routes verifican que `SUPABASE_URL` y `SERVICE_ROLE_KEY` existen. Si no están configurados (deploy accidental), retornan HTTP 503 en vez de errores crípticos. |
+| **Cache-Control** | API routes incluyen headers `Cache-Control` apropiados: `s-maxage=60` para news/search, `s-maxage=300` para articles, `no-store` para watchlist/admin. |
+| **HMAC unsubscribe** | Weekly brief genera tokens HMAC-SHA256 para links de unsubscribe. Requiere `HMAC_SECRET` en env. |
 | **Sanitización de errores** | Errores del server se loggean full; al cliente solo llegan mensajes genéricos. |
 | **Red aislada** | Embed server y Redis ligados a `127.0.0.1`. Studio, Mailpit y Analytics excluidos del arranque. Worker en Docker corre como non-root. |
 | **RLS** | Los clientes solo pueden leer artículos con `is_filtered = TRUE`. Escritura requiere service role key. |
@@ -601,7 +607,7 @@ Capa 5: Frontend — Si pipeline falla, dashboard sigue mostrando artículos cac
 | Escenario | Comportamiento |
 |-----------|----------------|
 | OpenRouter caído | Pipeline reintenta 4x, luego Celery reintenta 3x. Frontend no se afecta. |
-| Embed server caído | `/api/search` retorna HTTP 200 con array vacío. CommandPalette muestra "No results". |
+| Embed server caído | `/api/search` retorna HTTP 503 con mensaje "Search unavailable". CommandPalette muestra estado de error. |
 | Redis caído | Celery no puede encolar. Frontend sigue con artículos existentes. |
 | Supabase caído | Todo se detiene. Pero Supabase local tiene ~99.9% uptime. |
 | Rate limit diario agotado (50 req/día free) | Tasks se pausan hasta reset. Frontend no se afecta. |
@@ -705,9 +711,15 @@ ai-news-solution/
 │       ├── button.tsx, card.tsx, badge.tsx, dialog.tsx...
 │
 ├── lib/
+│   ├── guards.ts                 # Deployment guard: requireSupabase() → 503
 │   ├── supabase.ts               # Singleton del cliente Supabase (service role)
 │   ├── database.types.ts         # Tipos TypeScript generados del schema
 │   └── utils.ts                  # cn() helper (clsx + tailwind-merge)
+│
+├── __tests__/api/                # Tests de API routes (vitest)
+│   ├── search.test.ts            # 4 tests: queries, 503
+│   ├── news.test.ts              # 3 tests: paginación, caching
+│   └── watchlist.test.ts          # 6 tests: CRUD, validación
 │
 ├── worker/                       # Pipeline Python
 │   ├── main.py                   # Entry point: APScheduler + Celery startup
@@ -725,11 +737,16 @@ ai-news-solution/
 │   │   ├── process_article.py    # Celery task → LangGraph pipeline
 │   │   └── weekly_brief.py       # Email digest semanal (Resend)
 │   ├── tests/
+│   │   ├── scrapers/
+│   │   │   ├── test_rss.py           # 6 tests: HTML strip, HTTP error, parsing
+│   │   │   ├── test_hn.py            # 6 tests: keyword filter, HTTP error
+│   │   │   └── test_arxiv.py         # 2 tests: HTTP error, Atom feed
+│   │   ├── test_embed_server.py      # 5 tests: health, embed, 404
 │   │   └── pipeline/
 │   │       └── test_categorizer.py  # 20 fixtures, ≥95% accuracy target
-│   ├── Dockerfile                # CPU-only PyTorch, non-root user
+│   ├── Dockerfile                # CPU-only PyTorch, HEALTHCHECK, non-root
 │   ├── requirements.txt          # Pinned deps + CPU PyTorch index
-│   └── .env                      # OPENROUTER_API_KEY, SUPABASE keys, Redis
+│   └── .env                      # OPENROUTER_API_KEY, SUPABASE keys, Redis, HMAC_SECRET
 │
 ├── supabase/
 │   └── migrations/
@@ -741,7 +758,9 @@ ai-news-solution/
 ├── ARCHITECTURE.md               # Arquitectura técnica
 ├── RUNBOOK.md                    # Guía operativa paso a paso
 ├── GUIDE.md                      # ← Este documento
-├── next.config.ts                # Security headers
+├── IMPROVEMENTS.md               # Plan de mejoras y scorecard
+├── next.config.ts                # Security headers + CSP
+├── vitest.config.ts              # Configuración de vitest (@ alias)
 └── package.json                  # pnpm, scripts, dependencias frontend
 ```
 
@@ -749,7 +768,7 @@ ai-news-solution/
 
 ## 15. Testing y calidad
 
-### Tests del pipeline (Python)
+### Tests del pipeline — Accuracy (Python, requiere API key)
 
 **Archivo:** `worker/tests/pipeline/test_categorizer.py`
 
@@ -763,10 +782,48 @@ ai-news-solution/
 ```bash
 cd worker && source .venv/bin/activate
 set -a && source .env && set +a  # cargar OPENROUTER_API_KEY
-pytest tests/ -v
+pytest tests/pipeline/ -v
 ```
 
 > **Nota:** Estos tests hacen llamadas reales a OpenRouter (20 LLM calls). Pueden fallar por rate limits en el free tier (50 req/día). Los tests se skipean si `OPENROUTER_API_KEY` no está en el env.
+
+### Tests unitarios del worker (Python, sin API key)
+
+**Scrapers** (`worker/tests/scrapers/`):
+
+| Archivo | Tests | Qué valida |
+|---------|-------|------------|
+| `test_rss.py` | 6 | `_strip_html` (tags, entidades, whitespace), `fetch_rss` (error HTTP, respuesta >2 MB, parsing RSS válido) |
+| `test_hn.py` | 6 | `_is_relevant` (keywords técnicos), `fetch_hn` (error HTTP) |
+| `test_arxiv.py` | 2 | Error HTTP y parsing de Atom feed válido |
+
+**Embed server** (`worker/tests/test_embed_server.py`):
+
+| Tests | Qué valida |
+|-------|------------|
+| 5 | `/health` 200 (modelo OK), `/health` 503 (modelo falla), `/embed` 200, ruta inválida 404 |
+
+**Ejecución:**
+```bash
+cd worker && source .venv/bin/activate
+pytest tests/scrapers/ tests/test_embed_server.py -v  # 19 tests, sin API key
+```
+
+### Tests del frontend (TypeScript, vitest)
+
+**Archivos** (`__tests__/api/`):
+
+| Archivo | Tests | Qué valida |
+|---------|-------|------------|
+| `search.test.ts` | 4 | Query vacío, query corto, query >200 chars → 400, embed down → 503 |
+| `news.test.ts` | 3 | Metadata de paginación, header Cache-Control, page negativo clamped |
+| `watchlist.test.ts` | 6 | GET retorna data + no-store, POST/DELETE sin tag_id → 400, tipo inválido, JSON inválido |
+
+**Ejecución:**
+```bash
+pnpm test        # 13 tests con vitest
+pnpm test:watch  # modo interactivo
+```
 
 ### Calidad del frontend
 
@@ -774,14 +831,17 @@ pytest tests/ -v
 |-------|-------------|---------|--------|
 | Type safety | `tsc --noEmit` | `pnpm typecheck` | 0 errores |
 | Linting | ESLint 9 | `pnpm lint` | 0 warnings |
+| Unit tests | vitest | `pnpm test` | 13 tests pasando |
 
 ### CI/CD (GitHub Actions)
 
 ```yaml
-# .github/workflows/ci.yml
+# .github/workflows/ci.yml — 4 jobs
 jobs:
-  frontend:     # pnpm install → typecheck → lint
-  pipeline:     # pip install → pytest (noise filter accuracy)
+  frontend:           # pnpm install → typecheck → lint → vitest (13 tests)
+  pipeline:           # pip install → pytest scrapers + embed server (19 tests, sin API key)
+  pipeline-accuracy:  # Solo en main → pytest pipeline accuracy (3 tests, requiere OPENROUTER_API_KEY)
+  docker:             # docker build → verificar que la imagen se construye
 ```
 
 ---
@@ -811,6 +871,10 @@ RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/wh
     -r requirements.txt
 
 COPY . .
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD curl -f http://localhost:8001/health || exit 1
+
 RUN useradd --create-home --shell /bin/bash --uid 1000 worker
 USER worker
 CMD ["python", "-m", "worker.main"]

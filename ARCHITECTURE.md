@@ -276,12 +276,13 @@ The embed server (`worker/embed_server.py`) is a lightweight HTTP server (Python
 
 | Endpoint | Method | Response |
 |----------|--------|----------|
-| `/health` | GET | `{"ok": true}` |
+| `/health` | GET | `{"ok": true, "model": "all-MiniLM-L6-v2"}` — actually encodes text to verify model works. Returns 503 if model fails. |
 | `/embed` | POST `{"text": "..."}` | `{"embedding": [...]}` (384 floats) |
 
 - Binds to `127.0.0.1:8001` by default (configurable via `EMBED_BIND` env var)
 - Model lazy-loaded on first request, kept in memory
-- If unavailable, `/api/search` returns HTTP 200 with empty results
+- Docker `HEALTHCHECK` pings `/health` every 30s with 30s start period
+- If unavailable, `/api/search` returns HTTP 503 with error message
 
 ---
 
@@ -293,7 +294,9 @@ The embed server (`worker/embed_server.py`) is a lightweight HTTP server (Python
 | **Input sanitization** | All scraped HTML/RSS content is stripped with `bleach.clean(tags=[], strip=True)` before LLM processing. |
 | **XML protection** | RSS response size capped at 2 MB (`MAX_RSS_RESPONSE_BYTES`). `defusedxml` dependency for XML bomb prevention. |
 | **XSS prevention** | Code blocks rendered via `hast-util-to-jsx-runtime` instead of `dangerouslySetInnerHTML`. |
-| **Security headers** | `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy` (camera, mic, geolocation denied). |
+| **Security headers** | `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy` (camera, mic, geolocation denied), `Content-Security-Policy` (`default-src 'self'`, `frame-ancestors 'none'`, `connect-src` Supabase). |
+| **Deployment guard** | `requireSupabase()` in `lib/guards.ts` returns HTTP 503 if Supabase env vars are missing (e.g., during Vercel builds). Applied to all 6 API routes. |
+| **Cache-Control** | API routes set proper caching: `s-maxage=60` for news/search, `s-maxage=300` for articles, `no-store` for private data (watchlist, admin). |
 | **Error sanitization** | Server errors logged with full detail; client responses receive generic messages only. |
 | Network isolation | Embed server and Redis bind to `127.0.0.1` only. Non-essential Supabase services (Studio, Mailpit, Analytics) excluded from startup. Worker Dockerfile runs as non-root user. |
 | **RLS enforcement** | Supabase RLS ensures clients can only read `is_filtered = TRUE` articles. Writes require service role key. |
@@ -324,7 +327,7 @@ The embed server (`worker/embed_server.py`) is a lightweight HTTP server (Python
 | `CELERY_RESULT_BACKEND` | Yes | `redis://localhost:6379/0` |
 | `DAILY_TOKEN_CAP` | No | Max tokens/day before auto-pause (default: 400,000) |
 | `RESEND_API_KEY` | No | Weekly email digest (optional) |
-| `RESEND_FROM_EMAIL` | No | Sender email address for digests |
+| `HMAC_SECRET` | No | HMAC-SHA256 key for unsubscribe tokens (weekly brief) |
 
 ---
 
@@ -333,17 +336,22 @@ The embed server (`worker/embed_server.py`) is a lightweight HTTP server (Python
 ```yaml
 # .github/workflows/ci.yml — runs on push to main/dev and all PRs
 jobs:
-  frontend:     # pnpm install → typecheck → lint
-  pipeline:     # pip install → pytest (noise filter accuracy tests)
+  frontend:          # pnpm install → typecheck → lint → vitest (13 API route tests)
+  pipeline:          # pip install → pytest scrapers + embed server (19 unit tests)
+  pipeline-accuracy: # pytest pipeline accuracy (main branch only, requires API keys)
+  docker:            # docker build validation (no push)
 ```
 
 ### Quality Gates
 
 | Check | Tool | Threshold |
-|-------|------|-----------|
+|-------|------|----------|
 | Type safety | `tsc --noEmit` | Zero errors |
 | Linting | ESLint 9 | Zero warnings |
-| Noise filter accuracy | pytest | ≥95% technical pass rate, ≤5% false positives |
+| API route tests | vitest | 13 tests (search, news, watchlist validation) |
+| Scraper + embed tests | pytest | 19 tests (RSS, HN, Arxiv, embed server) |
+| Noise filter accuracy | pytest | ≥95% technical pass rate (main branch only) |
+| Docker build | `docker build` | Image builds successfully |
 
 ---
 

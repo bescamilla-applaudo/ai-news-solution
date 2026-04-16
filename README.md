@@ -110,19 +110,20 @@ app/                    # Next.js App Router (pages + API routes)
 └── admin/usage/        # LLM usage dashboard
 
 components/             # React components (Shadcn/UI)
-lib/                    # Shared utilities (Supabase client, types)
+lib/                    # Shared utilities (Supabase client, types, guards)
+__tests__/              # Frontend API route tests (vitest)
 
 worker/                 # Python agentic pipeline
 ├── pipeline/           # LangGraph graph definition
 ├── scrapers/           # RSS, Arxiv, HN, DeepMind scrapers
 ├── tasks/              # Celery tasks (process_article, weekly_brief, cleanup_db)
-├── tests/              # Pipeline accuracy tests
+├── tests/              # Scraper, embed server, and pipeline accuracy tests
 ├── embed_server.py     # Local embedding HTTP server
 ├── main.py             # APScheduler entry point
 └── celery_app.py       # Celery configuration
 
 supabase/migrations/    # SQL migrations (schema + seed data + retention)
-.github/                # CI/CD workflows + agent definitions
+.github/                # CI/CD workflows (4 jobs) + agent definitions
 ```
 
 ---
@@ -130,9 +131,18 @@ supabase/migrations/    # SQL migrations (schema + seed data + retention)
 ## Quality Assurance
 
 ```bash
+# Frontend
 pnpm typecheck          # TypeScript type checking (zero errors)
 pnpm lint               # ESLint (zero warnings)
-pytest worker/tests/ -v # Pipeline noise filter accuracy tests
+pnpm test               # vitest — 13 API route tests
+
+# Worker (no API key needed)
+cd worker && source .venv/bin/activate
+pytest tests/scrapers/ tests/test_embed_server.py -v  # 19 unit tests
+
+# Pipeline accuracy (requires OPENROUTER_API_KEY)
+set -a && source .env && set +a
+pytest tests/pipeline/ -v   # 3 tests, 20 LLM calls
 ```
 
 ---

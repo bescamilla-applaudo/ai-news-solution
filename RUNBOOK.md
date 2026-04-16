@@ -168,6 +168,8 @@ Con las Terminales 1, 2 y 3 activas:
 | `CELERY_BROKER_URL` | Sí | `redis://localhost:6379/0` |
 | `CELERY_RESULT_BACKEND` | Sí | `redis://localhost:6379/0` |
 | `RESEND_API_KEY` | No | Solo para el digest semanal por email |
+| `HMAC_SECRET` | No | Clave HMAC-SHA256 para tokens de unsubscribe (weekly brief) |
+| `APP_URL` | No | URL base de la app para links de unsubscribe (default: `http://localhost:3000`) |
 
 ---
 
@@ -193,8 +195,14 @@ pnpm typecheck
 # Linting
 pnpm lint
 
-# Tests del pipeline (noise filter accuracy)
-cd worker && source .venv/bin/activate && pytest tests/ -v
+# Tests del frontend (vitest — 13 tests de API routes)
+pnpm test
+
+# Tests unitarios del worker (scrapers + embed server — 19 tests, sin API keys)
+cd worker && source .venv/bin/activate && pytest tests/scrapers/ tests/test_embed_server.py -v
+
+# Tests de accuracy del pipeline (requiere OPENROUTER_API_KEY)
+cd worker && source .venv/bin/activate && pytest tests/pipeline/ -v
 
 # Estado de los workers Celery
 celery -A worker.celery_app.app inspect active

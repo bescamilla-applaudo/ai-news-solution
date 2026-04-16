@@ -23,7 +23,6 @@ import os
 from datetime import datetime, timedelta, timezone
 
 import bleach
-from openai import OpenAI
 import httpx
 
 from worker.db import get_supabase
@@ -52,10 +51,7 @@ def _fetch_top_articles() -> list[dict]:
 
 def _generate_digest(articles: list[dict], week_of: str) -> str:
     """Use OpenRouter (free model) to generate a Markdown brief from the top articles."""
-    client = OpenAI(
-        api_key=os.environ.get("OPENROUTER_API_KEY", ""),
-        base_url="https://openrouter.ai/api/v1",
-    )
+    from worker.pipeline.graph import _openrouter_chat, SUMMARIZER_POOL
 
     article_list = "\n".join(
         f"- [{a['title']}]({a['source_url']}) (Impact: {a.get('impact_score', '?')}/10, "
@@ -76,10 +72,11 @@ Write a brief Markdown email body (no subject line). Format:
 
 Keep it dense, technical, and developer-focused. No hype, no financial news."""
 
-    response = client.chat.completions.create(
-        model="google/gemma-4-31b-it:free",
+    response = _openrouter_chat(
+        model=SUMMARIZER_POOL.current,
         max_tokens=800,
         messages=[{"role": "user", "content": prompt}],
+        pool=SUMMARIZER_POOL,
     )
     return response.choices[0].message.content.strip()
 

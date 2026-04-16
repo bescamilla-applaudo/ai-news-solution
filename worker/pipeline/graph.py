@@ -19,6 +19,7 @@ import json
 import logging
 import operator
 import os
+import threading
 import time
 from typing import Annotated, Literal, TypedDict
 
@@ -56,12 +57,68 @@ def _parse_llm_json(text: str) -> dict:
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
-# Free model for cheap first-pass classification
-CATEGORIZER_MODEL = "google/gemma-4-31b-it:free"
+# ---------------------------------------------------------------------------
+# Free-model pool with automatic rotation on rate-limit (429)
+#
+# OpenRouter free-tier limits:
+#   - 20 requests/minute per model
+#   - 50 requests/day total (or 1000/day if $10+ credits purchased)
+#
+# When a model hits 429, we rotate to the next one in the pool.
+# Each role (categorizer, evaluator, summarizer) has its own ordered pool
+# so we can assign the best-fit models per task complexity.
+# ---------------------------------------------------------------------------
 
-# Free model for evaluation and summarization (higher quality)
-EVALUATOR_MODEL   = "nvidia/nemotron-3-super-120b-a12b:free"
-SUMMARIZER_MODEL  = "nvidia/nemotron-3-super-120b-a12b:free"
+class ModelPool:
+    """Thread-safe round-robin pool of free OpenRouter models for a given role."""
+
+    def __init__(self, models: list[str]) -> None:
+        self._models = models
+        self._index = 0
+        self._lock = threading.Lock()
+
+    @property
+    def current(self) -> str:
+        with self._lock:
+            return self._models[self._index]
+
+    def rotate(self) -> str:
+        """Advance to the next model and return it. Wraps around."""
+        with self._lock:
+            self._index = (self._index + 1) % len(self._models)
+            model = self._models[self._index]
+            logger.warning("Model rotated → %s", model)
+            return model
+
+    @property
+    def all_models(self) -> list[str]:
+        return list(self._models)
+
+
+# Categorizer: lightweight, fast classification (only needs ~10 output tokens)
+CATEGORIZER_POOL = ModelPool([
+    "google/gemma-4-31b-it:free",
+    "nvidia/nemotron-nano-9b-v2:free",
+    "nvidia/nemotron-3-nano-30b-a3b:free",
+])
+
+# Evaluator/Summarizer: need higher quality for scoring and writing
+EVALUATOR_POOL = ModelPool([
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "openai/gpt-oss-120b:free",
+    "minimax/minimax-m2.5:free",
+])
+
+SUMMARIZER_POOL = ModelPool([
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "openai/gpt-oss-120b:free",
+    "minimax/minimax-m2.5:free",
+])
+
+# Legacy constants for backward compatibility (tests, weekly_brief)
+CATEGORIZER_MODEL = CATEGORIZER_POOL.current
+EVALUATOR_MODEL = EVALUATOR_POOL.current
+SUMMARIZER_MODEL = SUMMARIZER_POOL.current
 
 
 def _openrouter() -> OpenAI:
@@ -77,18 +134,29 @@ def _openrouter() -> OpenAI:
     )
 
 
-def _openrouter_chat(*, model: str, messages: list[dict], max_tokens: int = 512):
-    """Call OpenRouter with exponential backoff on 429 rate-limit errors."""
+def _openrouter_chat(*, model: str, messages: list[dict], max_tokens: int = 512,
+                     pool: ModelPool | None = None):
+    """Call OpenRouter with exponential backoff on 429 rate-limit errors.
+
+    If a ``ModelPool`` is provided and the current model returns 429,
+    we rotate to the next free model in the pool before retrying.
+    """
     client = _openrouter()
+    active_model = model
     for attempt in range(4):
         try:
             return client.chat.completions.create(
-                model=model, max_tokens=max_tokens, messages=messages,
+                model=active_model, max_tokens=max_tokens, messages=messages,
             )
         except Exception as exc:
             if getattr(exc, "status_code", None) == 429 and attempt < 3:
                 wait = 2 ** attempt * 5  # 5s, 10s, 20s
-                logger.warning("Rate-limited (429), retrying in %ds…", wait)
+                if pool is not None:
+                    active_model = pool.rotate()
+                    logger.warning("429 on %s → rotated to %s, retrying in %ds…",
+                                   model, active_model, wait)
+                else:
+                    logger.warning("Rate-limited (429), retrying in %ds…", wait)
                 time.sleep(wait)
                 continue
             raise
@@ -157,10 +225,12 @@ def categorizer_node(state: PipelineState) -> dict:
     )
 
     try:
+        model = CATEGORIZER_POOL.current
         response = _openrouter_chat(
-            model=CATEGORIZER_MODEL,
+            model=model,
             max_tokens=10,
             messages=[{"role": "user", "content": prompt}],
+            pool=CATEGORIZER_POOL,
         )
         category_raw = response.choices[0].message.content.strip()
         allowed = {"Technical", "Financial", "Political", "General"}
@@ -170,7 +240,7 @@ def categorizer_node(state: PipelineState) -> dict:
         return {
             "category": category,
             "llm_tokens": [{
-                "model": CATEGORIZER_MODEL,
+                "model": model,
                 "input_tokens": usage.prompt_tokens if usage else 0,
                 "output_tokens": usage.completion_tokens if usage else 0,
             }],
@@ -206,10 +276,12 @@ def evaluator_node(state: PipelineState) -> dict:
     )
 
     try:
+        model = EVALUATOR_POOL.current
         response = _openrouter_chat(
-            model=EVALUATOR_MODEL,
+            model=model,
             max_tokens=300,
             messages=[{"role": "user", "content": prompt}],
+            pool=EVALUATOR_POOL,
         )
         text = response.choices[0].message.content.strip()
         result = _parse_llm_json(text)
@@ -221,7 +293,7 @@ def evaluator_node(state: PipelineState) -> dict:
             "affected_workflows": result.get("affected_workflows", [])[:4],
             "tags": [t for t in result.get("tags", []) if t in TECH_TAGS_VOCABULARY],
             "llm_tokens": [{
-                "model": EVALUATOR_MODEL,
+                "model": model,
                 "input_tokens": usage.prompt_tokens if usage else 0,
                 "output_tokens": usage.completion_tokens if usage else 0,
             }],
@@ -262,10 +334,12 @@ def summarizer_node(state: PipelineState) -> dict:
     )
 
     try:
+        model = SUMMARIZER_POOL.current
         response = _openrouter_chat(
-            model=SUMMARIZER_MODEL,
+            model=model,
             max_tokens=1500,
             messages=[{"role": "user", "content": prompt}],
+            pool=SUMMARIZER_POOL,
         )
         text = response.choices[0].message.content.strip()
         result = _parse_llm_json(text)
@@ -288,7 +362,7 @@ def summarizer_node(state: PipelineState) -> dict:
             "technical_summary": result.get("technical_summary", ""),
             "implementation_steps": validated_steps,
             "llm_tokens": [{
-                "model": SUMMARIZER_MODEL,
+                "model": model,
                 "input_tokens": usage.prompt_tokens if usage else 0,
                 "output_tokens": usage.completion_tokens if usage else 0,
             }],

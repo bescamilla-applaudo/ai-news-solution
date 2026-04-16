@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { TechTag } from '@/lib/database.types'
 
 interface WatchlistManagerProps {
@@ -12,6 +13,7 @@ export function WatchlistManager({ allTags, watchedTagIds: initial }: WatchlistM
   const [watched, setWatched] = useState<Set<string>>(new Set(initial))
   const [inflight, setInflight] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
+  const router = useRouter()
 
   const toggle = async (tag: TechTag) => {
     if (inflight.has(tag.id)) return // prevent double-clicks on this specific tag
@@ -41,6 +43,9 @@ export function WatchlistManager({ allTags, watchedTagIds: initial }: WatchlistM
           return next
         })
         setError('Failed to update watchlist')
+      } else {
+        // Re-run the Server Component so the article feed updates
+        router.refresh()
       }
     } catch {
       setWatched((prev) => {

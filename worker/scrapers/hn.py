@@ -69,11 +69,16 @@ async def fetch_hn() -> list[RawArticle]:
         logger.error("HN story list fetch failed: %s", exc)
         return []
 
-    # Fetch details for the top N IDs in parallel, then filter
+    # Fetch details for the top N IDs in parallel with concurrency limit
     top_ids = all_ids[:HN_MAX_STORIES]
+    semaphore = asyncio.Semaphore(20)  # Max 20 concurrent requests to HN API
+
+    async def _throttled_fetch(client: httpx.AsyncClient, sid: int) -> dict | None:
+        async with semaphore:
+            return await _fetch_story(client, sid)
 
     async with httpx.AsyncClient(timeout=15.0) as client:
-        tasks = [_fetch_story(client, sid) for sid in top_ids]
+        tasks = [_throttled_fetch(client, sid) for sid in top_ids]
         results = await asyncio.gather(*tasks)
 
     articles: list[RawArticle] = []

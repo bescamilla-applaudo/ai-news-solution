@@ -16,6 +16,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy worker source
 COPY . .
 
+# Run as non-root user for security
+RUN useradd --create-home --shell /bin/bash --uid 1000 worker
+USER worker
+
 # Railway injects PORT but the worker does NOT expose an HTTP port.
 # Celery is started directly without an HTTP server.
 CMD ["python", "-m", "worker.main"]

@@ -26,7 +26,8 @@ export async function GET() {
     .order('timestamp', { ascending: true })
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    console.error('[/api/admin/usage] Supabase error:', error.message)
+    return NextResponse.json({ error: 'Failed to fetch usage data' }, { status: 500 })
   }
 
   // Aggregate by day + model

@@ -6,30 +6,36 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { ArticleCard } from '@/components/article-card'
 import { CodeBlock } from '@/components/code-block'
 import { NewsItemWithTags, ImplementationStep } from '@/lib/database.types'
+import { supabase } from '@/lib/supabase'
 
 async function getArticle(id: string): Promise<NewsItemWithTags | null> {
-  const baseUrl = process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : 'http://localhost:3000'
+  const { data, error } = await supabase
+    .from('news_items')
+    .select('*, news_item_tags(tech_tags(*))')
+    .eq('id', id)
+    .eq('is_filtered', true)
+    .single()
 
-  const res = await fetch(`${baseUrl}/api/article/${id}`, {
-    next: { revalidate: 300 }, // revalidate every 5 minutes
-  })
-  if (!res.ok) return null
-  return res.json()
+  if (error || !data) return null
+  return data as unknown as NewsItemWithTags
 }
 
 async function getRelated(id: string): Promise<NewsItemWithTags[]> {
-  const baseUrl = process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : 'http://localhost:3000'
-
-  const res = await fetch(`${baseUrl}/api/article/${id}/related`, {
-    next: { revalidate: 300 },
+  const { data } = await supabase.rpc('match_articles', {
+    query_embedding: await getArticleEmbedding(id),
+    match_count: 6,
+    filter_id: id,
   })
-  if (!res.ok) return []
-  const json = await res.json()
-  return json.data ?? []
+  return ((data ?? []).filter((a) => a.id !== id).slice(0, 5)) as unknown as NewsItemWithTags[]
+}
+
+async function getArticleEmbedding(id: string): Promise<number[]> {
+  const { data } = await supabase
+    .from('news_items')
+    .select('embedding')
+    .eq('id', id)
+    .single()
+  return data?.embedding ?? []
 }
 
 function ScoreChip({ label, value }: { label: string; value: number | null }) {

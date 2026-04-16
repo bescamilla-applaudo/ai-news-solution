@@ -1,8 +1,11 @@
 /**
  * Server component: renders a syntax-highlighted code block using shiki.
- * Safe to use with pipeline-generated code — shiki escapes all content internally.
+ * Uses codeToHast + hast-util-to-jsx-runtime to avoid dangerouslySetInnerHTML.
  */
-import { codeToHtml } from 'shiki'
+import { codeToHast } from 'shiki'
+import { toJsxRuntime, type Components } from 'hast-util-to-jsx-runtime'
+import { Fragment, type JSX } from 'react'
+import { jsx, jsxs } from 'react/jsx-runtime'
 
 function detectLanguage(code: string): string {
   const s = code.trim()
@@ -24,22 +27,22 @@ interface CodeBlockProps {
 export async function CodeBlock({ code, language }: CodeBlockProps) {
   const lang = language ?? detectLanguage(code)
 
-  let html: string
+  let content: JSX.Element
   try {
-    html = await codeToHtml(code, {
-      lang,
-      theme: 'github-dark',
-    })
+    const hast = await codeToHast(code, { lang, theme: 'github-dark' })
+    content = toJsxRuntime(hast, {
+      Fragment,
+      jsx: jsx as Components extends never ? never : typeof jsx,
+      jsxs: jsxs as Components extends never ? never : typeof jsxs,
+    }) as JSX.Element
   } catch {
     // Fallback: plain pre block if shiki fails (unsupported language etc.)
-    html = `<pre class="shiki-fallback"><code>${code.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`
+    content = <pre className="shiki-fallback"><code>{code}</code></pre>
   }
 
   return (
-    <div
-      className="rounded-lg overflow-x-auto border border-zinc-800 text-xs [&>pre]:p-4 [&>pre]:bg-zinc-950! [&>pre]:m-0 [&>pre]:leading-relaxed"
-      // shiki output is sanitized: escapes all code content, only adds its own spans
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+    <div className="rounded-lg overflow-x-auto border border-zinc-800 text-xs [&>pre]:p-4 [&>pre]:bg-zinc-950! [&>pre]:m-0 [&>pre]:leading-relaxed">
+      {content}
+    </div>
   )
 }

@@ -40,6 +40,7 @@ from worker.scrapers.hn import fetch_hn  # noqa: E402
 from worker.scrapers.rss import fetch_all_rss  # noqa: E402
 from worker.tasks.process_article import process_article  # noqa: E402
 from worker.tasks.weekly_brief import send_weekly_brief  # noqa: E402
+from worker.tasks.cleanup_db import cleanup_db  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -54,11 +55,19 @@ def _already_seen(urls: list[str]) -> set[str]:
         return set()
     try:
         db = get_supabase()
-        res = db.table("news_items").select("source_url").in_("source_url", urls).execute()
-        return {row["source_url"] for row in (res.data or [])}
-    except Exception:
-        logger.warning("Dedup check failed; queuing all articles to avoid data loss")
+        # Batch in chunks of 500 to avoid query timeouts on large lists
+        seen: set[str] = set()
+        for i in range(0, len(urls), 500):
+            batch = urls[i:i + 500]
+            res = db.table("news_items").select("source_url").in_("source_url", batch).execute()
+            seen.update(row["source_url"] for row in (res.data or []))
+        return seen
+    except (ConnectionError, TimeoutError, OSError) as exc:
+        logger.warning("Dedup check failed (transient — %s); queuing all articles to avoid data loss", exc)
         return set()
+    except Exception:
+        logger.exception("Dedup check failed (unexpected error); re-raising to prevent duplicates")
+        raise
 
 
 def _enqueue_rss() -> None:
@@ -164,6 +173,16 @@ def main() -> None:
         minute=0,
         timezone="UTC",
         id="weekly_brief",
+        replace_existing=True,
+    )
+    # Daily database cleanup at 03:00 UTC (low-traffic window)
+    scheduler.add_job(
+        cleanup_db.delay,
+        "cron",
+        hour=3,
+        minute=0,
+        timezone="UTC",
+        id="db_cleanup",
         replace_existing=True,
     )
     scheduler.start()

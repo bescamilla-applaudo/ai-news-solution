@@ -29,20 +29,20 @@ export async function GET(request: NextRequest) {
     const { embedding } = await embedRes.json()
 
     // Cosine similarity search via pgvector RPC
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase as any).rpc('match_articles', {
+    const { data, error } = await supabase.rpc('match_articles', {
       query_embedding: embedding,
       match_count: 10,
       filter_id: null,
     })
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      console.error('[/api/search] Supabase RPC error:', error.message)
+      return NextResponse.json({ error: 'Search failed' }, { status: 500 })
     }
 
     return NextResponse.json({ data: data ?? [] })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Search failed'
-    return NextResponse.json({ data: [], error: message }, { status: 200 })
+    console.error('[/api/search] Unexpected error:', err)
+    return NextResponse.json({ data: [], error: 'Search temporarily unavailable' }, { status: 200 })
   }
 }

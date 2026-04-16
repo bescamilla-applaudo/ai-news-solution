@@ -15,6 +15,9 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+# Max RSS response size (2MB) — protects against XML bombs from untrusted feeds
+MAX_RSS_RESPONSE_BYTES = 2 * 1024 * 1024
+
 
 class RawArticle(TypedDict):
     source_url: str
@@ -46,6 +49,9 @@ async def fetch_rss(url: str, source_name: str) -> list[RawArticle]:
         async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
             response = await client.get(url, headers={"User-Agent": "AI-News-Bot/1.0"})
             response.raise_for_status()
+            if len(response.content) > MAX_RSS_RESPONSE_BYTES:
+                logger.warning("RSS response too large (%d bytes) for %s — skipping", len(response.content), url)
+                return []
             raw_xml = response.text
     except httpx.HTTPError as exc:
         logger.error("RSS fetch failed for %s: %s", url, exc)

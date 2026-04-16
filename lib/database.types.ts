@@ -31,6 +31,7 @@ export type Database = {
           published_at: string | null
           ingested_at: string
           is_filtered: boolean
+          archived: boolean
         }
         Insert: {
           id?: string
@@ -49,6 +50,7 @@ export type Database = {
           published_at?: string | null
           ingested_at?: string
           is_filtered: boolean
+          archived?: boolean
         }
         Update: {
           id?: string
@@ -67,6 +69,7 @@ export type Database = {
           published_at?: string | null
           ingested_at?: string
           is_filtered?: boolean
+          archived?: boolean
         }
         Relationships: []
       }
@@ -101,7 +104,22 @@ export type Database = {
           news_item_id?: string
           tech_tag_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: 'news_item_tags_news_item_id_fkey'
+            columns: ['news_item_id']
+            isOneToOne: false
+            referencedRelation: 'news_items'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'news_item_tags_tech_tag_id_fkey'
+            columns: ['tech_tag_id']
+            isOneToOne: false
+            referencedRelation: 'tech_tags'
+            referencedColumns: ['id']
+          }
+        ]
       }
       user_watchlist: {
         Row: {
@@ -119,7 +137,15 @@ export type Database = {
           tech_tag_id?: string
           created_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: 'user_watchlist_tech_tag_id_fkey'
+            columns: ['tech_tag_id']
+            isOneToOne: false
+            referencedRelation: 'tech_tags'
+            referencedColumns: ['id']
+          }
+        ]
       }
       email_subscriptions: {
         Row: {
@@ -171,7 +197,27 @@ export type Database = {
       }
     }
     Views: Record<string, never>
-    Functions: Record<string, never>
+    Functions: {
+      match_articles: {
+        Args: {
+          query_embedding: number[]
+          match_count?: number
+          filter_id?: string | null
+        }
+        Returns: Array<{
+          id: string
+          title: string
+          source_name: string
+          source_url: string
+          technical_summary: string | null
+          impact_score: number | null
+          depth_score: number | null
+          tags: string[] | null
+          published_at: string | null
+          similarity: number
+        }>
+      }
+    }
     Enums: Record<string, never>
   }
 }

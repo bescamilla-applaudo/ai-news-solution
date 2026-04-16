@@ -11,6 +11,8 @@ const ALL_TAGS = [
   'Research', 'Methodologies', 'LangGraph', 'Claude', 'Agents', 'Embeddings',
 ]
 
+const MAX_PAGES = 20 // Cap at ~400 articles in memory
+
 async function fetchNews({ pageParam = 0, tag }: { pageParam?: number; tag: string | null }) {
   const params = new URLSearchParams({ page: String(pageParam) })
   if (tag) params.set('tag', tag)
@@ -31,20 +33,22 @@ export function NewsFeed() {
         lastPage.meta.hasMore ? lastPage.meta.page + 1 : undefined,
     })
 
-  // Infinite scroll: load next page when user reaches bottom
+  // Infinite scroll: load next page when user reaches bottom (capped)
   useEffect(() => {
     const handleScroll = () => {
+      const pagesLoaded = data?.pages.length ?? 0
       if (
         window.innerHeight + window.scrollY >= document.body.offsetHeight - 400 &&
         hasNextPage &&
-        !isFetchingNextPage
+        !isFetchingNextPage &&
+        pagesLoaded < MAX_PAGES
       ) {
         fetchNextPage()
       }
     }
     window.addEventListener('scroll', handleScroll)
     return () => window.removeEventListener('scroll', handleScroll)
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage, data?.pages.length])
 
   const articles: NewsItemWithTags[] =
     data?.pages.flatMap((p) => p.data ?? []) ?? []
@@ -112,6 +116,12 @@ export function NewsFeed() {
             <Skeleton key={i} className="h-36 w-full bg-zinc-800 rounded-lg" />
           ))}
         </div>
+      )}
+
+      {!isLoading && !hasNextPage && articles.length > 0 && (
+        <p className="text-xs text-zinc-600 text-center py-6">
+          All caught up
+        </p>
       )}
     </div>
   )

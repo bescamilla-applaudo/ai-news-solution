@@ -11,8 +11,7 @@ async function getWatchlistTags(userId: string): Promise<TechTag[]> {
     .eq('user_id', userId)
 
   if (!data) return []
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (data as any[]).map((row) => row.tech_tags).filter(Boolean)
+  return (data as Array<{ tech_tags: TechTag }>).map((row) => row.tech_tags).filter(Boolean)
 }
 
 async function getAllTags(): Promise<TechTag[]> {
@@ -39,7 +38,7 @@ async function getPersonalizedFeed(
     .order('published_at', { ascending: false })
     .limit(40)
 
-  return (data as NewsItemWithTags[]) ?? []
+  return (data as unknown as NewsItemWithTags[]) ?? []
 }
 
 const OWNER_ID = 'owner'

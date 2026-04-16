@@ -69,6 +69,7 @@ class EmbedHandler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     port = int(os.environ.get("EMBED_PORT", "8001"))
-    server = HTTPServer(("0.0.0.0", port), EmbedHandler)
-    logger.info("Embed server listening on port %d", port)
+    bind = os.environ.get("EMBED_BIND", "127.0.0.1")
+    server = HTTPServer((bind, port), EmbedHandler)
+    logger.info("Embed server listening on %s:%d", bind, port)
     server.serve_forever()

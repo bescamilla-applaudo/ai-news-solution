@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
+import { supabase } from '@/lib/supabase'
 
 interface ModelBreakdown {
   model: string
@@ -20,11 +21,50 @@ interface UsageResponse {
   grand_total_usd: number
 }
 
+// Cost per 1M tokens (USD) — OpenRouter free models are $0, kept for future paid models
+const MODEL_COST: Record<string, { input: number; output: number }> = {
+  'google/gemma-4-31b-it:free':              { input: 0, output: 0 },
+  'nvidia/nemotron-3-super-120b-a12b:free':  { input: 0, output: 0 },
+}
+
+function estimateCost(model: string, inputTokens: number, outputTokens: number): number {
+  const pricing = MODEL_COST[model] ?? { input: 0, output: 0 }
+  return (inputTokens / 1_000_000) * pricing.input
+       + (outputTokens / 1_000_000) * pricing.output
+}
+
 async function getUsage(): Promise<UsageResponse> {
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
-  const res = await fetch(`${base}/api/admin/usage`, { cache: 'no-store' })
-  if (!res.ok) throw new Error(`Usage API error: ${res.status}`)
-  return res.json()
+  const { data, error } = await supabase
+    .from('llm_usage_log')
+    .select('timestamp, model, input_tokens, output_tokens')
+    .gte('timestamp', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+    .order('timestamp', { ascending: true })
+
+  if (error) throw new Error('Failed to fetch usage data')
+
+  const byDayModel: Record<string, Record<string, { input: number; output: number }>> = {}
+  for (const row of data ?? []) {
+    const day = row.timestamp.slice(0, 10)
+    const model = row.model
+    if (!byDayModel[day]) byDayModel[day] = {}
+    if (!byDayModel[day][model]) byDayModel[day][model] = { input: 0, output: 0 }
+    byDayModel[day][model].input += row.input_tokens ?? 0
+    byDayModel[day][model].output += row.output_tokens ?? 0
+  }
+
+  const days = Object.entries(byDayModel).map(([date, models]) => {
+    const modelBreakdown = Object.entries(models).map(([model, tokens]) => ({
+      model,
+      input_tokens: tokens.input,
+      output_tokens: tokens.output,
+      estimated_cost_usd: estimateCost(model, tokens.input, tokens.output),
+    }))
+    const totalCost = modelBreakdown.reduce((s, m) => s + m.estimated_cost_usd, 0)
+    return { date, models: modelBreakdown, total_cost_usd: totalCost }
+  })
+
+  const grandTotal = days.reduce((s, d) => s + d.total_cost_usd, 0)
+  return { days, grand_total_usd: grandTotal }
 }
 
 function fmt(n: number, digits = 2) {

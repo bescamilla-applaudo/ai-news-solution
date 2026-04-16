@@ -28,6 +28,27 @@ from worker.db import get_supabase
 
 logger = logging.getLogger(__name__)
 
+
+def _parse_llm_json(text: str) -> dict:
+    """Extract and parse JSON from LLM response, handling markdown fences and trailing text."""
+    text = text.strip()
+    # Strip markdown code fences
+    if text.startswith("```"):
+        parts = text.split("```")
+        if len(parts) >= 3:
+            text = parts[1]
+        else:
+            text = parts[1] if len(parts) > 1 else text
+        if text.startswith("json"):
+            text = text[4:]
+        text = text.strip()
+    # Try to extract JSON object if there's surrounding text
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    if start >= 0 and end > start:
+        text = text[start:end]
+    return json.loads(text)
+
 # ---------------------------------------------------------------------------
 # OpenRouter client — OpenAI-SDK-compatible, free models, no card required
 # ---------------------------------------------------------------------------
@@ -177,11 +198,7 @@ def evaluator_node(state: PipelineState) -> dict:
             messages=[{"role": "user", "content": prompt}],
         )
         text = response.choices[0].message.content.strip()
-        if text.startswith("```"):
-            text = text.split("```")[1]
-            if text.startswith("json"):
-                text = text[4:]
-        result = json.loads(text)
+        result = _parse_llm_json(text)
 
         usage = response.usage
         return {
@@ -239,18 +256,19 @@ def summarizer_node(state: PipelineState) -> dict:
             messages=[{"role": "user", "content": prompt}],
         )
         text = response.choices[0].message.content.strip()
-        if text.startswith("```"):
-            text = text.split("```")[1]
-            if text.startswith("json"):
-                text = text[4:]
-        result = json.loads(text)
+        result = _parse_llm_json(text)
 
         steps = result.get("implementation_steps", [])
         validated_steps = []
         for step in steps[:5]:
             code = step.get("code")
-            if code and code not in state["raw_content"]:
-                step["code"] = None
+            # Validate code exists in raw content — use normalized comparison
+            # to handle whitespace/newline differences from LLM extraction
+            if code:
+                normalized_code = " ".join(code.split())
+                normalized_content = " ".join(state["raw_content"].split())
+                if normalized_code not in normalized_content:
+                    step["code"] = None
             validated_steps.append(step)
 
         usage = response.usage

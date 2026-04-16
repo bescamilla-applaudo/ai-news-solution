@@ -37,5 +37,7 @@ export async function GET(
 
   const related = (data ?? []).filter((a) => a.id !== id).slice(0, 5)
 
-  return NextResponse.json({ data: related })
+  return NextResponse.json({ data: related }, {
+    headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' },
+  })
 }

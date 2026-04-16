@@ -20,6 +20,10 @@ COPY . .
 RUN useradd --create-home --shell /bin/bash --uid 1000 worker
 USER worker
 
+# Health check for embed server (only applies when running embed_server.py)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD curl -f http://localhost:8001/health || exit 1
+
 # Railway injects PORT but the worker does NOT expose an HTTP port.
 # Celery is started directly without an HTTP server.
 CMD ["python", "-m", "worker.main"]

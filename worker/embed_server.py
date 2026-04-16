@@ -58,10 +58,20 @@ class EmbedHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(b'{"ok":true}')
+            try:
+                model = get_model()
+                # Verify model can actually encode (not just that it loaded)
+                _ = model.encode("health", normalize_embeddings=True)
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"ok":true,"model":"all-MiniLM-L6-v2"}')
+            except Exception as exc:
+                logger.error("Health check failed: %s", exc)
+                self.send_response(503)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"ok":false}')
         else:
             self.send_response(404)
             self.end_headers()

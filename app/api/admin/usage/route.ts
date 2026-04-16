@@ -60,5 +60,7 @@ export async function GET() {
 
   const grandTotal = days.reduce((s, d) => s + d.total_cost_usd, 0)
 
-  return NextResponse.json({ days, grand_total_usd: grandTotal })
+  return NextResponse.json({ days, grand_total_usd: grandTotal }, {
+    headers: { 'Cache-Control': 'no-store' },
+  })
 }

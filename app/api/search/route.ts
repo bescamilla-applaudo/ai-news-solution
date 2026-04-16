@@ -47,7 +47,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Search failed' }, { status: 500 })
     }
 
-    return NextResponse.json({ data: data ?? [] })
+    return NextResponse.json({ data: data ?? [] }, {
+      headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
+    })
   } catch (err) {
     console.error('[/api/search] Unexpected error:', err)
     return NextResponse.json({ data: [], error: 'Search temporarily unavailable' }, { status: 503 })

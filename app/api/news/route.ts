@@ -41,5 +41,7 @@ export async function GET(request: NextRequest) {
       total: count ?? 0,
       hasMore: ((count ?? 0) > (page + 1) * PAGE_SIZE),
     },
+  }, {
+    headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
   })
 }

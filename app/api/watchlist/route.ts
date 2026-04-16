@@ -19,7 +19,9 @@ export async function GET() {
     return NextResponse.json({ error: 'Failed to fetch watchlist' }, { status: 500 })
   }
 
-  return NextResponse.json({ data: data ?? [] })
+  return NextResponse.json({ data: data ?? [] }, {
+    headers: { 'Cache-Control': 'no-store' },
+  })
 }
 
 // POST /api/watchlist — add a tag to the watchlist

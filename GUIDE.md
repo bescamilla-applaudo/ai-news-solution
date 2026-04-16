@@ -716,10 +716,19 @@ ai-news-solution/
 │   ├── database.types.ts         # Tipos TypeScript generados del schema
 │   └── utils.ts                  # cn() helper (clsx + tailwind-merge)
 │
-├── __tests__/api/                # Tests de API routes (vitest)
-│   ├── search.test.ts            # 4 tests: queries, 503
-│   ├── news.test.ts              # 3 tests: paginación, caching
-│   └── watchlist.test.ts          # 6 tests: CRUD, validación
+├── __tests__/                    # Tests frontend (vitest)
+│   ├── api/                      # Tests de API routes
+│   │   ├── search.test.ts        # 4 tests: queries, 503
+│   │   ├── news.test.ts          # 3 tests: paginación, caching
+│   │   └── watchlist.test.ts     # 6 tests: CRUD, validación
+│   ├── components/               # Tests de componentes React
+│   │   ├── article-card.test.tsx # 10 tests: render, score bars, minimal
+│   │   ├── watchlist-manager.test.tsx # 8 tests: toggle, rollback, inflight
+│   │   └── news-feed.test.tsx    # 7 tests: loading, error, tag filter
+│   └── setup.ts                  # Testing Library + jest-dom + cleanup
+│
+├── e2e/                          # Tests E2E (Playwright)
+│   └── navigation.spec.ts       # 5 tests: home, search, article, watchlist
 │
 ├── worker/                       # Pipeline Python
 │   ├── main.py                   # Entry point: APScheduler + Celery startup
@@ -768,6 +777,8 @@ ai-news-solution/
 
 ## 15. Testing y calidad
 
+El proyecto tiene **65 tests automatizados** distribuidos en 3 capas: unit tests de componentes y API (vitest), unit tests de pipeline y scrapers (pytest), y tests E2E (Playwright).
+
 ### Tests del pipeline — Accuracy (Python, requiere API key)
 
 **Archivo:** `worker/tests/pipeline/test_categorizer.py`
@@ -782,10 +793,18 @@ ai-news-solution/
 ```bash
 cd worker && source .venv/bin/activate
 set -a && source .env && set +a  # cargar OPENROUTER_API_KEY
-pytest tests/pipeline/ -v
+pytest tests/pipeline/test_categorizer.py -v
 ```
 
 > **Nota:** Estos tests hacen llamadas reales a OpenRouter (20 LLM calls). Pueden fallar por rate limits en el free tier (50 req/día). Los tests se skipean si `OPENROUTER_API_KEY` no está en el env.
+
+### Tests del daily token cap (Python, sin API key)
+
+**Archivo:** `worker/tests/pipeline/test_daily_cap.py`
+
+| Tests | Qué valida |
+|-------|------------|
+| 5 | Cap disabled (0), cap not exceeded, cap exceeded → `DailyTokenCapExceeded`, queries `llm_usage_log`, null token handling |
 
 ### Tests unitarios del worker (Python, sin API key)
 
@@ -806,10 +825,20 @@ pytest tests/pipeline/ -v
 **Ejecución:**
 ```bash
 cd worker && source .venv/bin/activate
-pytest tests/scrapers/ tests/test_embed_server.py -v  # 19 tests, sin API key
+pytest tests/ -v --ignore=tests/pipeline/test_categorizer.py  # 24 tests, sin API key
 ```
 
-### Tests del frontend (TypeScript, vitest)
+### Tests de componentes React (TypeScript, vitest + Testing Library)
+
+**Archivos** (`__tests__/components/`):
+
+| Archivo | Tests | Qué valida |
+|---------|-------|------------|
+| `article-card.test.tsx` | 10 | Render título, source badge, tags (max 3), score bars (colores emerald/amber/zinc), modo minimal, links, truncamiento a 200 chars, null scores |
+| `watchlist-manager.test.tsx` | 8 | Toggle POST/DELETE, optimistic update, rollback on API failure, rollback on network error, disabled while inflight, conteo de tags |
+| `news-feed.test.tsx` | 7 | Loading skeletons, articles render, error state, empty state, tag filter buttons, filter con query param, empty state con tag name |
+
+### Tests de API routes (TypeScript, vitest)
 
 **Archivos** (`__tests__/api/`):
 
@@ -819,11 +848,33 @@ pytest tests/scrapers/ tests/test_embed_server.py -v  # 19 tests, sin API key
 | `news.test.ts` | 3 | Metadata de paginación, header Cache-Control, page negativo clamped |
 | `watchlist.test.ts` | 6 | GET retorna data + no-store, POST/DELETE sin tag_id → 400, tipo inválido, JSON inválido |
 
+### Tests E2E (Playwright)
+
+**Archivo:** `e2e/navigation.spec.ts`
+
+| Tests | Qué valida |
+|-------|------------|
+| 5 | Home carga con heading, tag filter visible, articles o empty state, search page, watchlist page |
+
 **Ejecución:**
 ```bash
-pnpm test        # 13 tests con vitest
-pnpm test:watch  # modo interactivo
+pnpm test           # 38 tests vitest (13 API + 25 componentes)
+pnpm test:e2e       # 5 tests Playwright (requiere app corriendo)
+pnpm test:e2e:ui    # Playwright en modo UI interactivo
 ```
+
+### Resumen de cobertura
+
+| Capa | Herramienta | Tests | Cubre |
+|------|-------------|-------|-------|
+| Componentes React | vitest + Testing Library | 25 | ArticleCard, WatchlistManager, NewsFeed |
+| API routes | vitest | 13 | search, news, watchlist |
+| Scrapers | pytest | 14 | RSS, HN, Arxiv parsing y sanitización |
+| Embed server | pytest | 5 | Health, embedding, errores |
+| Pipeline accuracy | pytest | 3 | Noise filter ≥95% (requiere API key) |
+| Daily token cap | pytest | 5 | Cap enforcement, null handling |
+| E2E navegación | Playwright | 5 | Flujos de navegación completos |
+| **Total** | | **70** | |
 
 ### Calidad del frontend
 
@@ -831,15 +882,16 @@ pnpm test:watch  # modo interactivo
 |-------|-------------|---------|--------|
 | Type safety | `tsc --noEmit` | `pnpm typecheck` | 0 errores |
 | Linting | ESLint 9 | `pnpm lint` | 0 warnings |
-| Unit tests | vitest | `pnpm test` | 13 tests pasando |
+| Unit + component tests | vitest | `pnpm test` | 38 tests pasando |
+| E2E tests | Playwright | `pnpm test:e2e` | 5 tests pasando |
 
 ### CI/CD (GitHub Actions)
 
 ```yaml
 # .github/workflows/ci.yml — 4 jobs
 jobs:
-  frontend:           # pnpm install → typecheck → lint → vitest (13 tests)
-  pipeline:           # pip install → pytest scrapers + embed server (19 tests, sin API key)
+  frontend:           # pnpm install → typecheck → lint → vitest (38 tests)
+  pipeline:           # pip install → pytest scrapers + embed server + daily cap (24 tests)
   pipeline-accuracy:  # Solo en main → pytest pipeline accuracy (3 tests, requiere OPENROUTER_API_KEY)
   docker:             # docker build → verificar que la imagen se construye
 ```
@@ -852,7 +904,7 @@ jobs:
 
 | Ambiente | Frontend | Worker | Base de datos |
 |----------|----------|--------|---------------|
-| **Desarrollo** | `localhost:3000` | Local venv (5 terminales) | Supabase CLI (local Docker) |
+| **Desarrollo** | `localhost:3000` | Docker Compose (2 terminales) o local venv (5 terminales) | Supabase CLI (local Docker) |
 | **Producción** | Vercel (Hobby) | Railway (Docker) | Supabase cloud |
 
 ### Worker Dockerfile (optimizado)

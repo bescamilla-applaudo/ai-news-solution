@@ -21,6 +21,7 @@ import operator
 import os
 import threading
 import time
+from datetime import datetime, timezone
 from typing import Annotated, Literal, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -56,6 +57,33 @@ def _parse_llm_json(text: str) -> dict:
 # ---------------------------------------------------------------------------
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+DAILY_TOKEN_CAP = int(os.environ.get("DAILY_TOKEN_CAP", "0"))
+
+
+class DailyTokenCapExceeded(RuntimeError):
+    """Raised when the daily LLM token budget has been exhausted."""
+
+
+def _check_daily_token_cap() -> None:
+    """Raise DailyTokenCapExceeded if today's token usage meets or exceeds the cap."""
+    if DAILY_TOKEN_CAP <= 0:
+        return
+    db = get_supabase()
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    res = (
+        db.table("llm_usage_log")
+        .select("input_tokens, output_tokens")
+        .gte("timestamp", f"{today}T00:00:00Z")
+        .execute()
+    )
+    total = sum(
+        (row.get("input_tokens", 0) or 0) + (row.get("output_tokens", 0) or 0)
+        for row in (res.data or [])
+    )
+    if total >= DAILY_TOKEN_CAP:
+        msg = f"Daily token cap reached: {total:,} / {DAILY_TOKEN_CAP:,}"
+        logger.warning(msg)
+        raise DailyTokenCapExceeded(msg)
 
 # ---------------------------------------------------------------------------
 # Free-model pool with automatic rotation on rate-limit (429)
@@ -141,6 +169,7 @@ def _openrouter_chat(*, model: str, messages: list[dict], max_tokens: int = 512,
     If a ``ModelPool`` is provided and the current model returns 429,
     we rotate to the next free model in the pool before retrying.
     """
+    _check_daily_token_cap()
     client = _openrouter()
     active_model = model
     for attempt in range(4):

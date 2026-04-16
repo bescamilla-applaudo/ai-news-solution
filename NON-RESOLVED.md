@@ -1,7 +1,7 @@
 # NON-RESOLVED.md — Pendientes para 100% de implementación
 
 > Auditoría completa del proyecto AI News Intelligence Platform.
-> Fecha: 16 de abril de 2026 · Estado actual: **~85% completo**
+> Fecha: 16 de abril de 2026 · Estado actual: **~90% completo**
 
 ---
 
@@ -112,45 +112,37 @@ Si se agregan nuevos tags en la base de datos, no aparecen en el filtro.
 
 ---
 
-### 8. Tests de componentes React — 0 TESTS
+### 8. ~~Tests de componentes React — 0 TESTS~~ ✅ RESUELTO
 
-**Archivos faltantes:** `__tests__/components/*.test.tsx`
+**Estado:** Implementado — 25 tests de componentes con `@testing-library/react` + `vitest`.
 
-Existen 13 tests de API routes (vitest) pero **cero tests de componentes**. Los componentes `NewsFeed`, `ArticleCard`, `WatchlistManager`, `CommandPalette` no tienen pruebas de renderizado, interacción ni estados (loading/error/empty).
+- `ArticleCard` — 10 tests (render, score bars, colores emerald/amber, minimal mode, tags, links)
+- `WatchlistManager` — 8 tests (toggle optimista, rollback on failure, disabled while inflight, conteo)
+- `NewsFeed` — 7 tests (loading skeletons, error state, empty state, tag filter, infinite scroll)
 
-**Qué implementar:**
-- Configurar vitest con `@testing-library/react`.
-- Tests para `ArticleCard` (render con props, score bars, colores).
-- Tests para `WatchlistManager` (toggle optimista, rollback).
-- Tests para `NewsFeed` (infinite scroll, tag filter).
-
-**Esfuerzo estimado:** 4-6 horas.
+**Archivos:** `__tests__/components/article-card.test.tsx`, `watchlist-manager.test.tsx`, `news-feed.test.tsx`
 
 ---
 
-### 9. Tests E2E (Playwright) — INSTALADO PERO NO CONFIGURADO
+### 9. ~~Tests E2E (Playwright) — INSTALADO PERO NO CONFIGURADO~~ ✅ RESUELTO
 
-`@playwright/test` aparece en `pnpm-lock.yaml` pero no existe `playwright.config.ts` ni ningún archivo de test.
+**Estado:** Configurado y funcional.
 
-**Qué implementar:**
-- `playwright.config.ts` con base URL a localhost.
-- Test flows: Home → Search → Article detail → Watchlist → (Unsubscribe cuando exista).
-- Integrar en CI pipeline.
-
-**Esfuerzo estimado:** 4 horas setup + 2 horas por escenario.
+- `playwright.config.ts` con base URL y webServer auto-start
+- 5 tests E2E en `e2e/navigation.spec.ts`: Home, Search, Article detail, Watchlist
+- Scripts: `pnpm test:e2e` y `pnpm test:e2e:ui`
 
 ---
 
-### 10. Variable `DAILY_TOKEN_CAP` — DEFINIDA PERO NO USADA
+### 10. ~~Variable `DAILY_TOKEN_CAP` — DEFINIDA PERO NO USADA~~ ✅ RESUELTO
 
-**Archivo:** `worker/.env` define `DAILY_TOKEN_CAP=400000` y `RUNBOOK.md` la documenta, pero **ningún código la lee ni la valida**. El cap de tokens diario mencionado en la documentación no se aplica realmente.
+**Estado:** Implementado en `worker/pipeline/graph.py`.
 
-**Qué implementar:**
-- Leer `DAILY_TOKEN_CAP` en `worker/pipeline/graph.py`.
-- Consultar `usage_log` para tokens consumidos hoy.
-- Si se excede el cap, rechazar nuevos articles y loggear warning.
-
-**Esfuerzo estimado:** 1.5 horas.
+- Lee `DAILY_TOKEN_CAP` del env (default: 400,000 tokens)
+- `_check_daily_token_cap()` consulta `llm_usage_log` para tokens del día
+- Si se excede, lanza `DailyTokenCapExceeded` y bloquea nuevas llamadas LLM
+- 5 tests en `worker/tests/pipeline/test_daily_cap.py`
+- Set `DAILY_TOKEN_CAP=0` para desactivar
 
 ---
 
@@ -243,12 +235,12 @@ El directorio `app/login/` existe pero no tiene `page.tsx`. Actualmente la app u
 
 ## 📊 Resumen
 
-| Prioridad | Items | Esfuerzo estimado |
-|-----------|-------|-------------------|
-| 🔴 Críticos | 3 | ~5 horas |
-| 🟡 Importantes | 8 | ~20 horas |
-| 🟢 Deseables | 8 | ~10 horas |
-| **Total** | **19 items** | **~35 horas** |
+| Prioridad | Items | Resueltos | Pendientes | Esfuerzo restante |
+|-----------|-------|-----------|------------|-------------------|
+| 🔴 Críticos | 3 | 0 | 3 | ~5 horas |
+| 🟡 Importantes | 8 | 3 | 5 | ~10 horas |
+| 🟢 Deseables | 8 | 0 | 8 | ~10 horas |
+| **Total** | **19 items** | **3 resueltos** | **16 pendientes** | **~25 horas** |
 
 ### Lo que SÍ funciona (implementado al 100%)
 
@@ -265,5 +257,8 @@ El directorio `app/login/` existe pero no tiene `page.tsx`. Actualmente la app u
 - ✅ Retención de datos (30d discard, 90d archive, 6mo usage cleanup)
 - ✅ CSP headers, XSS sanitization, deployment guards
 - ✅ CI/CD con 4 jobs (frontend, pipeline, accuracy, docker)
-- ✅ 13 tests frontend (vitest) + 22 tests backend (pytest)
+- ✅ 38 tests frontend (vitest: 13 API routes + 25 componentes React)
+- ✅ 27 tests backend (pytest: scrapers, embed server, pipeline, daily cap)
+- ✅ 5 tests E2E (Playwright: navigación completa)
+- ✅ Daily token cap enforcement (DAILY_TOKEN_CAP en pipeline)
 - ✅ Docker Compose para levantar todo con un solo comando

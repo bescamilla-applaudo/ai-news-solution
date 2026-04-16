@@ -76,7 +76,9 @@ All sources are public — no API keys required for scraping.
 | LLM Client | `openai` Python SDK | Pointed at `https://openrouter.ai/api/v1` (OpenAI-compatible) |
 | Embeddings | `sentence-transformers/all-MiniLM-L6-v2` | Local, 384 dims, ~80 MB cached model, no API key |
 | Embed Server | `worker/embed_server.py` on port 8001 | Bridges local model to Next.js `/api/search` |
-| Rate-limit Retry | `_openrouter_chat()` wrapper | Exponential backoff (5s→10s→20s) on 429 errors |
+| Rate-limit Retry | `_openrouter_chat()` wrapper | Exponential backoff (5s→10s→20s) on 429 errors + automatic model rotation |
+| Model Pool | `ModelPool` class | Thread-safe round-robin across 9 free models (3 pools: categorizer, evaluator, summarizer) |
+| Daily Token Cap | `DAILY_TOKEN_CAP` env var | Enforced per-call check against `llm_usage_log` — blocks new LLM calls when budget is exhausted |
 | Job Queue | Celery 5+ with Redis broker | Retries, rate limits, task concurrency |
 | Scheduler | APScheduler | In-process cron for polling each source |
 | HTTP Client | httpx + feedparser | Async RSS/API fetching |
@@ -220,9 +222,9 @@ class PipelineState(TypedDict):
 
 | Node | Model | Cost | Purpose |
 |------|-------|------|---------|
-| `categorizer_node` | `google/gemma-4-31b-it:free` | $0 | Classify article category. Runs on ALL articles. |
-| `evaluator_node` | `nvidia/nemotron-3-super-120b-a12b:free` | $0 | Assign scores, workflows, and tags. Technical articles only. |
-| `summarizer_node` | `nvidia/nemotron-3-super-120b-a12b:free` | $0 | Generate Markdown summary + implementation steps. |
+| `categorizer_node` | ModelPool: `gemma-4-31b-it`, `nemotron-nano-9b`, `nemotron-3-nano-30b` | $0 | Classify article category. Runs on ALL articles. |
+| `evaluator_node` | ModelPool: `nemotron-3-super-120b`, `gpt-oss-120b`, `minimax-m2.5` | $0 | Assign scores, workflows, and tags. Technical articles only. |
+| `summarizer_node` | ModelPool: `nemotron-3-super-120b`, `gpt-oss-120b`, `minimax-m2.5` | $0 | Generate Markdown summary + implementation steps. |
 | `embedder_node` | `all-MiniLM-L6-v2` (local) | $0 | Generate 384-dim embedding vector. No network call. |
 | `storage_node` | Supabase | — | Upsert record with `is_filtered=TRUE`. Insert tags. Log usage. |
 | `discard_node` | Supabase | — | Store minimal record with `is_filtered=FALSE`. |
@@ -231,9 +233,10 @@ class PipelineState(TypedDict):
 ### Resilience
 
 - **Celery retries:** Up to 3× per article with exponential backoff (5s → 10s → 20s).
-- **OpenRouter rate-limit retry:** `_openrouter_chat()` wrapper retries up to 4× with exponential backoff (5s → 10s → 20s → 40s) on HTTP 429 responses.
+- **OpenRouter rate-limit retry:** `_openrouter_chat()` wrapper retries up to 4× with exponential backoff (5s → 10s → 20s → 40s) on HTTP 429 responses. On 429, the active model is automatically rotated to the next in the pool.
+- **ModelPool rotation:** Each role (categorizer, evaluator, summarizer) has a thread-safe `ModelPool` with 3 free OpenRouter models. On rate-limit, the pool rotates to the next model instantly.
 - **LLM JSON parsing:** Resilient `_parse_llm_json()` helper strips markdown fences and extracts JSON from mixed-content LLM responses.
-- **Cost cap:** Celery task checks `llm_usage_log` daily token sum. If `DAILY_TOKEN_CAP` exceeded, task is silently dropped.
+- **Daily token cap:** `_check_daily_token_cap()` queries `llm_usage_log` for today's total tokens before every LLM call. If `DAILY_TOKEN_CAP` (default 400,000) is exceeded, raises `DailyTokenCapExceeded` to prevent further API calls. Set to 0 to disable.
 - **Frontend unaffected:** During outages, the dashboard serves cached `is_filtered = TRUE` articles without interruption.
 
 ---
@@ -336,8 +339,8 @@ The embed server (`worker/embed_server.py`) is a lightweight HTTP server (Python
 ```yaml
 # .github/workflows/ci.yml — runs on push to main/dev and all PRs
 jobs:
-  frontend:          # pnpm install → typecheck → lint → vitest (13 API route tests)
-  pipeline:          # pip install → pytest scrapers + embed server (19 unit tests)
+  frontend:          # pnpm install → typecheck → lint → vitest (38 tests: 13 API + 25 components)
+  pipeline:          # pip install → pytest scrapers + embed server + daily cap (24 unit tests)
   pipeline-accuracy: # pytest pipeline accuracy (main branch only, requires API keys)
   docker:            # docker build validation (no push)
 ```
@@ -348,8 +351,10 @@ jobs:
 |-------|------|----------|
 | Type safety | `tsc --noEmit` | Zero errors |
 | Linting | ESLint 9 | Zero warnings |
-| API route tests | vitest | 13 tests (search, news, watchlist validation) |
+| Frontend tests | vitest | 38 tests (13 API routes + 25 React components) |
 | Scraper + embed tests | pytest | 19 tests (RSS, HN, Arxiv, embed server) |
+| Pipeline unit tests | pytest | 5 tests (daily token cap enforcement) |
+| E2E tests | Playwright | 5 tests (navigation flows) |
 | Noise filter accuracy | pytest | ≥95% technical pass rate (main branch only) |
 | Docker build | `docker build` | Image builds successfully |
 

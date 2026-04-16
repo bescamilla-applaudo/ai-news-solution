@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { requireSupabase } from '@/lib/guards'
 
 const OWNER_ID = 'owner'
 
 // GET /api/watchlist — returns the list of watched tags
 export async function GET() {
+  const guard = requireSupabase()
+  if (guard) return guard
+
   const { data, error } = await supabase
     .from('user_watchlist')
     .select('tech_tag_id, tech_tags(id, name, category)')
@@ -20,6 +24,9 @@ export async function GET() {
 
 // POST /api/watchlist — add a tag to the watchlist
 export async function POST(request: NextRequest) {
+  const guard = requireSupabase()
+  if (guard) return guard
+
   let body: { tech_tag_id?: string }
   try {
     body = await request.json()
@@ -60,6 +67,9 @@ export async function POST(request: NextRequest) {
 
 // DELETE /api/watchlist — remove a tag from the watchlist
 export async function DELETE(request: NextRequest) {
+  const guard = requireSupabase()
+  if (guard) return guard
+
   let body: { tech_tag_id?: string }
   try {
     body = await request.json()

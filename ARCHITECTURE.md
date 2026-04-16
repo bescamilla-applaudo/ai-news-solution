@@ -1,469 +1,386 @@
-# Technical Architecture: AI Intelligence & News Aggregator
+# Technical Architecture: AI News Intelligence Platform
 
-Canonical technical reference for the platform. See [PRD.md](PRD.md) for requirements and [PLAN.md](PLAN.md) for the implementation roadmap.
+> **Author:** Bryan Escamilla — Applaudo Studios  
+> **Stack:** Next.js 16 · Supabase · LangGraph · OpenRouter · Shadcn/UI  
+> **Last updated:** April 2026
+
+---
 
 ## 1. System Overview
 
-**Modular Monolith** for the Next.js frontend/API layer + independent **Agentic Pipeline** for data processing. Both services communicate exclusively through the Supabase database — no direct RPC between them. This keeps the worker fully replaceable without touching the frontend.
+The platform follows a **Modular Monolith** architecture: a Next.js frontend/API layer coupled with an independent **Agentic Pipeline** (Python) for data ingestion and enrichment. Both layers communicate exclusively through the Supabase database — no direct RPC between them. This separation allows the worker to be replaced or scaled without impacting the frontend.
 
 ```mermaid
 graph TD
-    A[Data Sources: HuggingFace RSS, OpenAI RSS, Arxiv API, DeepMind RSS, HN API] --> B[Ingestor Worker - APScheduler]
-    B --> C[Celery Task Queue - Redis]
+    A[Data Sources] --> B[Ingestor Worker — APScheduler]
+    B --> C[Celery Task Queue — Redis]
     C --> D[LangGraph Agent Pipeline]
-    D --> E{Noise Filter - google/gemma-4-31b-it:free via OpenRouter}
-    E -- Technical --> F[Evaluator + Summarizer - nvidia/nemotron-3-super-120b-a12b:free via OpenRouter]
-    E -- Non-Technical --> G[Discard / Audit Log]
-    F --> H[Embedder - sentence-transformers all-MiniLM-L6-v2 local 384 dims]
-    H --> I[Supabase PostgreSQL + pgvector]
-    I --> J[Next.js API]
+    D --> E{Noise Filter}
+    E -- Technical --> F[Evaluator + Summarizer]
+    E -- Non-Technical --> G[Discard with Audit Log]
+    F --> H[Embedder — local sentence-transformers]
+    H --> I[(Supabase PostgreSQL + pgvector)]
+    I --> J[Next.js API Routes]
     J --> K[Web Dashboard]
     I --> L[Weekly Brief Generator]
     L --> M[Resend Email Delivery]
-    N[Embed Server port 8001] --> J
-    H --> N
+    N[Embed Server — port 8001] --> J
+
+    style A fill:#1e293b,stroke:#475569,color:#e2e8f0
+    style I fill:#1e293b,stroke:#22c55e,color:#e2e8f0
+    style K fill:#1e293b,stroke:#3b82f6,color:#e2e8f0
 ```
 
-**Architecture philosophy:** Zero paid API calls during normal operation. LLM inference via OpenRouter free-tier models; embeddings via a local HTTP server backed by sentence-transformers. The entire stack runs free-of-charge — only a free OpenRouter account is required.
+### Data Sources
+
+| Source | Endpoint | Polling Interval |
+|--------|----------|-----------------|
+| HuggingFace Blog | `huggingface.co/blog/feed.xml` | Every 30 min |
+| OpenAI Blog | `openai.com/news/rss.xml` | Every 30 min |
+| Google DeepMind | `deepmind.google/blog/rss.xml` | Every 30 min |
+| Arxiv (cs.AI, cs.CL) | `export.arxiv.org/api/query` | Every 60 min |
+| Hacker News | `hacker-news.firebaseio.com/v0` | Every 60 min |
+
+All sources are public — no API keys required for scraping.
+
+### Design Philosophy
+
+- **Zero paid API calls.** LLM inference via OpenRouter free-tier models; embeddings via a local HTTP server backed by sentence-transformers. The entire stack runs free-of-charge — only a free OpenRouter account is required.
+- **Single-user simplicity.** No authentication, no session management. `OWNER_ID = 'owner'` is hardcoded; all routes are implicitly private (local deployment).
+- **Graceful degradation.** If OpenRouter rate-limits or the embed server is unavailable, the frontend continues serving cached data. No user-facing errors.
+
+---
 
 ## 2. Technology Stack
 
-### Frontend & Core API
+### Frontend & API Layer
 
-| Component | Technology | Notes |
-|---|---|---|
-| Framework | Next.js 16.2+ (App Router) | Server Actions, Route Handlers, Turbopack |
-| Styling | Tailwind CSS v4 + Shadcn/UI | Dark mode default, information-dense layout |
-| State Management | TanStack React Query v5 | Optimistic updates, stale-while-revalidate |
-| Auth | **None** | Personal single-user app; all routes are public. `OWNER_ID = 'owner'` hardcoded in server routes. |
+| Component | Technology | Version | Purpose |
+|-----------|-----------|---------|---------|
+| Framework | Next.js (App Router) | 16.2+ | Server rendering, API routes, Turbopack |
+| UI Library | Shadcn/UI + @base-ui/react | Latest | Accessible, customizable component primitives |
+| Styling | Tailwind CSS | v4 | Utility-first CSS, dark mode default |
+| State | TanStack React Query | v5 | Server state caching, optimistic updates |
+| Markdown | react-markdown + shiki | Latest | Syntax-highlighted code blocks in summaries |
+| Language | TypeScript | 5.x | Full type safety across frontend |
 
 ### Agentic Pipeline (Python Worker)
 
-| Component | Technology | Notes |
-|---|---|---|
-| Language | Python 3.11+ | Best ecosystem for LLM and scraping libraries |
-| Agent Framework | LangGraph 0.2+ | Stateful graph with retry and fallback edges |
-| LLM — Categorizer | `google/gemma-4-31b-it:free` via OpenRouter | First-pass technical filter, $0, 256K context |
-| LLM — Evaluator + Summarizer | `nvidia/nemotron-3-super-120b-a12b:free` via OpenRouter | Called only on Technical articles, $0, 262K context |
-| LLM Client | `openai` Python SDK | Pointed at `https://openrouter.ai/api/v1` — OpenAI-compatible interface |
-| Embeddings | `sentence-transformers/all-MiniLM-L6-v2` | Local, 384 dims, ~80MB model cached on disk, no API key |
-| Embed HTTP Server | `worker/embed_server.py` on port `8001` | Bridges local sentence-transformers to Next.js `/api/search` |
-| HTTP Client | `httpx` + `feedparser` | Async RSS parsing |
-| Job Queue Consumer | Celery 5+ (`celery[redis]`) | Handles retries, rate limits, and task concurrency |
+| Component | Technology | Purpose |
+|-----------|-----------|---------|
+| Runtime | Python 3.11+ | LLM/ML ecosystem |
+| Agent Framework | LangGraph 0.2+ | Stateful directed graph with retry and fallback edges |
+| LLM — Categorizer | `google/gemma-4-31b-it:free` via OpenRouter | First-pass technical noise filter ($0) |
+| LLM — Evaluator | `nvidia/nemotron-3-super-120b-a12b:free` via OpenRouter | Scoring and tag assignment ($0) |
+| LLM — Summarizer | `nvidia/nemotron-3-super-120b-a12b:free` via OpenRouter | Technical summaries + implementation steps ($0) |
+| LLM Client | `openai` Python SDK | Pointed at `https://openrouter.ai/api/v1` (OpenAI-compatible) |
+| Embeddings | `sentence-transformers/all-MiniLM-L6-v2` | Local, 384 dims, ~80 MB cached model, no API key |
+| Embed Server | `worker/embed_server.py` on port 8001 | Bridges local model to Next.js `/api/search` |
+| Rate-limit Retry | `_openrouter_chat()` wrapper | Exponential backoff (5s→10s→20s) on 429 errors |
+| Job Queue | Celery 5+ with Redis broker | Retries, rate limits, task concurrency |
 | Scheduler | APScheduler | In-process cron for polling each source |
-| Observability | Disabled | `LANGCHAIN_TRACING_V2=false`; no external tracing service required |
+| HTTP Client | httpx + feedparser | Async RSS/API fetching |
+| Input Sanitization | bleach | Strips HTML/JS before sending content to LLMs |
+| XML Security | defusedxml | Protects against XML bomb attacks from RSS feeds |
 
-### Data & Infrastructure
+### Infrastructure
 
-| Component | Technology | Notes |
-|---|---|---|
-| Primary DB | Supabase (PostgreSQL 15) | Managed, free tier sufficient for MVP |
-| Vector Search | pgvector (384 dims) | Co-located with primary DB, no separate vector service |
-| Job Queue Broker | Redis (Docker) | Local Docker container (`ai-news-redis`) |
-| Email | Resend | 100 emails/day free; optional (weekly brief only) |
-| FE Deployment | Vercel (Hobby) | Zero-config, edge CDN |
-| Worker Deployment | Railway | Docker container, always-on ~$5–10/month |
-| CI/CD | GitHub Actions | Lint, type-check, pipeline integration tests on every PR |
+| Component | Technology | Cost |
+|-----------|-----------|------|
+| Primary DB | Supabase (PostgreSQL 15 + pgvector) | Free |
+| Vector Search | pgvector (384 dims, IVFFlat index) | Co-located with DB |
+| Job Queue Broker | Redis (Docker container) | Free |
+| Email | Resend (optional, weekly brief only) | Free (100/day) |
+| Frontend Hosting | Vercel (Hobby) | Free |
+| Worker Hosting | Railway (Docker) | ~$5–10/month |
+| CI/CD | GitHub Actions | Free |
+
+**Total operational cost: ~$5–10/month** (Railway container only).
+
+---
 
 ## 3. Database Schema
 
-```sql
--- Enable pgvector
-CREATE EXTENSION IF NOT EXISTS vector;
+All data lives in a single Supabase PostgreSQL instance with the `pgvector` extension enabled.
 
--- Articles ingested and validated by the pipeline
-CREATE TABLE news_items (
-  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  source_url           TEXT UNIQUE NOT NULL,
-  source_name          TEXT NOT NULL,           -- 'huggingface' | 'openai' | 'arxiv' | 'deepmind' | 'hn'
-  title                TEXT NOT NULL,
-  raw_content          TEXT,
-  technical_summary    TEXT,
-  impact_score         SMALLINT CHECK (impact_score BETWEEN 1 AND 10),
-  depth_score          SMALLINT CHECK (depth_score BETWEEN 1 AND 10),
-  implementation_steps JSONB,                   -- [{"step": 1, "description": "...", "code": "..."}]
-  affected_workflows   TEXT[],                  -- e.g. ['RAG Pipelines', 'Agent Orchestration']
-  embedding            VECTOR(384),             -- all-MiniLM-L6-v2 (384 dims); set at ingestion
-  category             TEXT,                    -- 'Technical' | 'Financial' | 'Political' | 'General'
-  tags                 TEXT[],                  -- denormalized tag names for fast list queries
-  published_at         TIMESTAMPTZ,
-  ingested_at          TIMESTAMPTZ DEFAULT NOW(),
-  is_filtered          BOOLEAN NOT NULL DEFAULT FALSE  -- TRUE = passed noise filter, publicly visible
-);
+### Tables
 
--- Controlled vocabulary of technical tags
-CREATE TABLE tech_tags (
-  id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name     TEXT UNIQUE NOT NULL,               -- 'LangGraph', 'RAG', 'Claude', 'Multi-Agent', etc.
-  category TEXT NOT NULL                       -- 'framework' | 'model' | 'methodology' | 'tool'
-);
-
--- Many-to-many: articles <-> tags
-CREATE TABLE news_item_tags (
-  news_item_id UUID NOT NULL REFERENCES news_items(id) ON DELETE CASCADE,
-  tech_tag_id  UUID NOT NULL REFERENCES tech_tags(id)  ON DELETE CASCADE,
-  PRIMARY KEY (news_item_id, tech_tag_id)
-);
-
--- Single-owner watchlist (user_id is always 'owner')
-CREATE TABLE user_watchlist (
-  user_id     TEXT NOT NULL DEFAULT 'owner',
-  tech_tag_id UUID NOT NULL REFERENCES tech_tags(id) ON DELETE CASCADE,
-  created_at  TIMESTAMPTZ DEFAULT NOW(),
-  PRIMARY KEY (user_id, tech_tag_id)
-);
-
--- Email subscribers for the weekly brief (optional)
-CREATE TABLE email_subscriptions (
-  email      TEXT PRIMARY KEY,
-  active     BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- LLM usage tracking for cost awareness
-CREATE TABLE llm_usage_log (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  timestamp     TIMESTAMPTZ DEFAULT NOW(),
-  model         TEXT NOT NULL,
-  input_tokens  INT,
-  output_tokens INT,
-  job_id        TEXT
-);
-
--- Indexes
-CREATE INDEX ON news_items USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
-CREATE INDEX ON news_items (published_at DESC);
-CREATE INDEX ON news_items (impact_score DESC);
-CREATE INDEX ON news_items (is_filtered, published_at DESC);
-CREATE INDEX ON news_item_tags (tech_tag_id);
-CREATE INDEX ON news_item_tags (news_item_id);
 ```
+news_items              — Articles ingested and enriched by the pipeline
+tech_tags               — Controlled vocabulary of technical tags
+news_item_tags          — Many-to-many: articles ↔ tags
+user_watchlist          — Single-owner technology watchlist
+email_subscriptions     — Subscribers for the weekly email digest (optional)
+llm_usage_log           — Token usage tracking per LLM call
+```
+
+### Key Columns (news_items)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | UUID | Primary key |
+| `source_url` | TEXT (UNIQUE) | Deduplication key |
+| `source_name` | TEXT | `'huggingface'` · `'openai'` · `'arxiv'` · `'deepmind'` · `'hn'` |
+| `title` | TEXT | Article title |
+| `raw_content` | TEXT | HTML-stripped plain text |
+| `technical_summary` | TEXT | LLM-generated Markdown summary |
+| `impact_score` | SMALLINT (1–10) | Developer workflow impact |
+| `depth_score` | SMALLINT (1–10) | Technical complexity |
+| `implementation_steps` | JSONB | Step-by-step implementation guide |
+| `affected_workflows` | TEXT[] | e.g., `['RAG Pipelines', 'Agent Orchestration']` |
+| `embedding` | VECTOR(384) | all-MiniLM-L6-v2; set at ingestion |
+| `category` | TEXT | `'Technical'` · `'Financial'` · `'Political'` · `'General'` |
+| `tags` | TEXT[] | Denormalized tag names for fast list queries |
+| `is_filtered` | BOOLEAN | `TRUE` = passed noise filter, visible in dashboard |
+| `archived` | BOOLEAN | `TRUE` = archived by data retention policy |
 
 ### Semantic Search RPC
 
 ```sql
--- Used by /api/search route via supabase.rpc('match_articles', {...})
 CREATE OR REPLACE FUNCTION match_articles(
   query_embedding VECTOR(384),
-  match_threshold FLOAT DEFAULT 0.7,
-  match_count     INT   DEFAULT 10
+  match_count     INT DEFAULT 10,
+  filter_id       UUID DEFAULT NULL
 )
 RETURNS TABLE (
-  id                UUID,
-  title             TEXT,
-  source_name       TEXT,
-  technical_summary TEXT,
-  impact_score      SMALLINT,
-  tags              TEXT[],
-  published_at      TIMESTAMPTZ,
-  similarity        FLOAT
+  id UUID, title TEXT, source_name TEXT, source_url TEXT,
+  technical_summary TEXT, impact_score SMALLINT, depth_score SMALLINT,
+  tags TEXT[], published_at TIMESTAMPTZ, similarity FLOAT
 )
 LANGUAGE sql STABLE AS $$
-  SELECT
-    id, title, source_name, technical_summary,
-    impact_score, tags, published_at,
-    1 - (embedding <=> query_embedding) AS similarity
+  SELECT id, title, source_name, source_url, technical_summary,
+         impact_score, depth_score, tags, published_at,
+         1 - (embedding <=> query_embedding) AS similarity
   FROM news_items
-  WHERE is_filtered = TRUE
-    AND 1 - (embedding <=> query_embedding) > match_threshold
+  WHERE is_filtered = TRUE AND archived = FALSE
+    AND (filter_id IS NULL OR id != filter_id)
   ORDER BY embedding <=> query_embedding
   LIMIT match_count;
 $$;
 ```
 
-### Row Level Security (RLS)
+### Row Level Security
 
-```sql
--- news_items: public read for filtered articles; writes via service role only
-ALTER TABLE news_items ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "public_read_filtered" ON news_items
-  FOR SELECT USING (is_filtered = TRUE);
+| Table | Policy | Details |
+|-------|--------|---------|
+| `news_items` | `public_read_filtered` | SELECT only where `is_filtered = TRUE` |
+| `tech_tags` | `public_read` | Full read access |
+| `news_item_tags` | `public_read` | Full read access |
+| `user_watchlist` | Service role only | No client-facing policies; API routes use service role key |
+| `llm_usage_log` | Service role only | No client access; written by worker |
 
--- tech_tags: fully public read
-ALTER TABLE tech_tags ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "public_read" ON tech_tags FOR SELECT USING (TRUE);
+### Data Retention (Automated)
 
--- news_item_tags: public read
-ALTER TABLE news_item_tags ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "public_read" ON news_item_tags FOR SELECT USING (TRUE);
+| Policy | Retention | Schedule |
+|--------|-----------|----------|
+| Discarded articles (`is_filtered = FALSE`) | 30 days | Daily at 03:00 UTC |
+| LLM usage logs | 90 days | Daily at 03:00 UTC |
+| Old articles | Archived after 6 months | Daily at 03:00 UTC |
 
--- user_watchlist: all access via server-side service role (no client JWT)
-ALTER TABLE user_watchlist ENABLE ROW LEVEL SECURITY;
--- No client-facing SELECT policy; reads/writes done via service role key in API routes only.
-
--- llm_usage_log: no client access; written by worker via service role key only
-ALTER TABLE llm_usage_log ENABLE ROW LEVEL SECURITY;
--- No SELECT policy = inaccessible from client. Admin reads via service role.
-```
+---
 
 ## 4. LangGraph Agent Pipeline
 
-Directed stateful graph with explicit error and discard edges.
+The pipeline is a directed stateful graph that processes each article through classification, evaluation, summarization, and embedding.
+
+```mermaid
+graph LR
+    S[START] --> C[Categorizer]
+    C -- Technical --> E[Evaluator]
+    C -- "Non-Technical" --> D[Discard] --> END1[END]
+    E --> SM[Summarizer]
+    SM --> EM[Embedder]
+    EM --> ST[Storage] --> END2[END]
+    C -- Error --> ER[Error Handler] --> END3[END]
+    E -- Error --> ER
+    SM -- Error --> ER
+```
+
+### Pipeline State
 
 ```python
-from typing import TypedDict, Literal
-
 class PipelineState(TypedDict):
-    # Populated by the scraper before the graph runs:
     source_url: str
     source_name: str
     title: str
     raw_content: str
     published_at: str | None
-    # After categorizer_node:
     category: Literal["Technical", "Financial", "Political", "General", "Error"]
-    # After evaluator_node:
-    depth_score: int           # Technical complexity: 1-10
-    impact_score: int          # Developer workflow impact: 1-10
+    depth_score: int
+    impact_score: int
     affected_workflows: list[str]
-    tags: list[str]            # Tag names matched to tech_tags vocabulary
-    # After summarizer_node:
+    tags: list[str]
     technical_summary: str
     implementation_steps: list[dict]
-    # After embedder_node (local sentence-transformers, 384 dims):
     embedding: list[float]
     error: str | None
-
-# Node responsibilities:
-# 1. categorizer_node  -> google/gemma-4-31b-it:free via OpenRouter
-#                         Classify category. $0, runs on ALL articles.
-#                         Strips markdown code fences from response before JSON parsing.
-# 2. evaluator_node    -> nvidia/nemotron-3-super-120b-a12b:free via OpenRouter
-#                         Assigns depth_score, impact_score, affected_workflows, tags.
-#                         Runs only on Technical articles.
-# 3. summarizer_node   -> nvidia/nemotron-3-super-120b-a12b:free via OpenRouter
-#                         technical_summary (markdown) + implementation_steps JSON.
-#                         CONSTRAINT: only extract code literally present in raw_content.
-# 4. embedder_node     -> SentenceTransformer("all-MiniLM-L6-v2") loaded locally (lazy init)
-#                         Generates 384-dim embedding. No network call, no API key required.
-# 5. storage_node      -> Supabase (service role key): upsert full record, is_filtered=TRUE.
-#                         Inserts tags into news_item_tags. Writes to llm_usage_log.
-# 6. discard_node      -> Inserts minimal record with is_filtered=FALSE.
-# 7. error_node        -> Stores raw article with is_filtered=FALSE.
-#                         Raises Celery RetryError (max 3x, exponential backoff).
-
-# Graph edges:
-# START -> categorizer_node
-# categorizer_node:
-#   category == "Technical"  -> evaluator_node
-#   category != "Technical"  -> discard_node -> END
-# evaluator_node  -> summarizer_node
-# summarizer_node -> embedder_node
-# embedder_node   -> storage_node -> END
-# Any node (on exception) -> error_node -> END
 ```
 
-**OpenRouter client pattern:**
-```python
-from openai import OpenAI
+### Node Responsibilities
 
-def _openrouter() -> OpenAI:
-    return OpenAI(
-        api_key=os.environ["OPENROUTER_API_KEY"],
-        base_url="https://openrouter.ai/api/v1",
-    )
-```
+| Node | Model | Cost | Purpose |
+|------|-------|------|---------|
+| `categorizer_node` | `google/gemma-4-31b-it:free` | $0 | Classify article category. Runs on ALL articles. |
+| `evaluator_node` | `nvidia/nemotron-3-super-120b-a12b:free` | $0 | Assign scores, workflows, and tags. Technical articles only. |
+| `summarizer_node` | `nvidia/nemotron-3-super-120b-a12b:free` | $0 | Generate Markdown summary + implementation steps. |
+| `embedder_node` | `all-MiniLM-L6-v2` (local) | $0 | Generate 384-dim embedding vector. No network call. |
+| `storage_node` | Supabase | — | Upsert record with `is_filtered=TRUE`. Insert tags. Log usage. |
+| `discard_node` | Supabase | — | Store minimal record with `is_filtered=FALSE`. |
+| `error_node` | Supabase | — | Store raw article. Raise Celery RetryError (max 3×, exponential backoff). |
 
-**Fallback / Graceful Degradation:** If OpenRouter rate-limits or is unavailable, nodes raise a retriable exception. Celery retries up to 3x with exponential backoff (5s, 10s, 20s). After 3 failures the article is stored with `is_filtered = FALSE`. The Next.js dashboard serves previously cached `is_filtered = TRUE` articles uninterrupted.
+### Resilience
 
-## 5. Embed Server
+- **Celery retries:** Up to 3× per article with exponential backoff (5s → 10s → 20s).
+- **OpenRouter rate-limit retry:** `_openrouter_chat()` wrapper retries up to 4× with exponential backoff (5s → 10s → 20s → 40s) on HTTP 429 responses.
+- **LLM JSON parsing:** Resilient `_parse_llm_json()` helper strips markdown fences and extracts JSON from mixed-content LLM responses.
+- **Cost cap:** Celery task checks `llm_usage_log` daily token sum. If `DAILY_TOKEN_CAP` exceeded, task is silently dropped.
+- **Frontend unaffected:** During outages, the dashboard serves cached `is_filtered = TRUE` articles without interruption.
 
-`worker/embed_server.py` is a lightweight HTTP server (stdlib `http.server`) that exposes the local sentence-transformers model to the Next.js frontend. No framework, no dependencies beyond sentence-transformers.
+---
 
-| Endpoint | Method | Body | Response |
-|---|---|---|---|
-| `/health` | GET | — | `{"ok": true}` |
-| `/embed` | POST | `{"text": "..."}` | `{"embedding": [0.12, -0.03, ...]}` (384 floats) |
+## 5. Frontend Architecture
 
-- **Port:** `8001` (configurable via `WORKER_EMBED_URL` in `.env.local`)
-- **Model:** `all-MiniLM-L6-v2` — lazy-loaded on first request, kept in memory
-- **Used by:** `app/api/search/route.ts` — if unavailable, search returns HTTP 200 with empty results (graceful degradation)
-- **Startup:** `python worker/embed_server.py` (with `.venv` activated)
-
-## 6. API Integrations & Scraping Sources
-
-| Source | Endpoint | Auth | Polling Interval |
-|---|---|---|---|
-| HuggingFace Blog | `https://huggingface.co/blog/feed.xml` | None | Every 30 min |
-| OpenAI Blog | `https://openai.com/news/rss.xml` | None | Every 30 min |
-| Arxiv (cs.AI, cs.CL) | `https://export.arxiv.org/api/query?search_query=cat:cs.AI+OR+cat:cs.CL&max_results=20&sortBy=submittedDate` | None | Every 60 min |
-| Google DeepMind | `https://deepmind.google/blog/rss.xml` | None | Every 30 min |
-| Hacker News | `https://hacker-news.firebaseio.com/v0/newstories.json` + top-N filtered by keyword | None | Every 60 min |
-
-### Pipeline Cost Per Article
-
-| Node | Model | Est. Cost/Article |
-|---|---|---|
-| Categorizer | `google/gemma-4-31b-it:free` (OpenRouter) | **$0** |
-| Evaluator | `nvidia/nemotron-3-super-120b-a12b:free` (OpenRouter) | **$0** |
-| Summarizer | `nvidia/nemotron-3-super-120b-a12b:free` (OpenRouter) | **$0** |
-| Embedder | `all-MiniLM-L6-v2` (local CPU) | **$0** |
-| **Total** | | **$0** |
-
-> Free-tier OpenRouter models are subject to rate limits. If limits are hit, Celery retries with exponential backoff. To increase throughput, change the model strings in `worker/pipeline/graph.py` to paid OpenRouter models.
-
-## 7. Frontend Architecture
-
-### Route Structure (App Router)
+### Route Map
 
 ```
 app/
-  layout.tsx              # Root layout: QueryProvider, dark mode, Command+K listener
-  page.tsx                # /  -> High-density news feed (public, no auth required)
-  article/[id]/page.tsx   # /article/:id -> Technical detail view
-  search/page.tsx         # /search -> Command+K semantic search results
-  watchlist/page.tsx      # /watchlist -> Technology watchlist (OWNER_ID='owner')
-  admin/
-    usage/page.tsx        # /admin/usage -> LLM token usage dashboard
-  api/
-    news/route.ts              # GET /api/news -> paginated articles (is_filtered=TRUE)
-    search/route.ts            # GET /api/search?q= -> calls embed server -> pgvector similarity
-    article/
-      [id]/route.ts            # GET /api/article/:id
-      [id]/related/route.ts    # GET /api/article/:id/related -> top 5 by vector similarity
-    watchlist/route.ts         # GET / POST / DELETE (OWNER_ID='owner', service role key)
-    admin/
-      usage/route.ts           # GET /api/admin/usage (service role only)
+├── layout.tsx                    # Root: QueryProvider, dark mode, Cmd+K listener
+├── page.tsx                      # /  → News feed (impact_score DESC)
+├── article/[id]/page.tsx         # /article/:id → Technical detail view
+├── search/page.tsx               # /search → Semantic search results
+├── watchlist/page.tsx            # /watchlist → Technology watchlist
+├── admin/usage/page.tsx          # /admin/usage → LLM token usage dashboard
+└── api/
+    ├── news/route.ts             # GET → Paginated articles (is_filtered=TRUE)
+    ├── search/route.ts           # GET ?q= → Embed server → pgvector similarity
+    ├── article/[id]/route.ts     # GET → Single article
+    ├── article/[id]/related/     # GET → Top 5 by vector similarity
+    │   └── route.ts
+    ├── watchlist/route.ts        # GET / POST / DELETE (OWNER_ID='owner')
+    └── admin/usage/route.ts      # GET → Token usage data (service role)
 ```
 
 ### Key Components
 
-- **`NewsFeed`** — Virtualized list of `ArticleCard`, sorted by `impact_score DESC`. Client-side tag filter bar.
-- **`ArticleCard`** — Compact card: title, source badge, depth score bar, top 3 tags, relative publish time.
-- **`ArticleDetailView`** — Markdown renderer + implementation steps accordion + syntax-highlighted code blocks (`shiki`). Related articles sidebar.
-- **`CommandPalette`** — `Command+K` / `Ctrl+K` modal using Shadcn `Command`. Calls `/api/search` with 300ms debounce. Returns graceful empty state if embed server is unavailable.
-- **`WatchlistPanel`** — Tag picker with toggle. Writes via API route with hardcoded `OWNER_ID='owner'`.
+| Component | Purpose |
+|-----------|---------|
+| `NewsFeed` | Infinite-scroll article list sorted by impact score. Client-side tag filtering. Capped at 20 pages. |
+| `ArticleCard` | Compact card: title, source badge, score bars, top 3 tags, relative time. |
+| `CodeBlock` | Syntax-highlighted code via shiki with secure `hast-util-to-jsx-runtime` rendering (no `dangerouslySetInnerHTML`). |
+| `CommandPalette` | Cmd+K / Ctrl+K modal. 300ms debounce. Graceful empty state if embed server unavailable. |
+| `WatchlistManager` | Tag picker with toggle. Writes via API route with `OWNER_ID='owner'`. |
 
-## 8. Startup & Local Development
+### Embed Server
 
-### 5-Terminal Startup
+The embed server (`worker/embed_server.py`) is a lightweight HTTP server (Python stdlib `http.server`) that exposes the local sentence-transformers model for frontend semantic search.
 
-```bash
-# Terminal 1 — Infrastructure (Supabase local + Redis Docker)
-bash setup-docker.sh
+| Endpoint | Method | Response |
+|----------|--------|----------|
+| `/health` | GET | `{"ok": true}` |
+| `/embed` | POST `{"text": "..."}` | `{"embedding": [...]}` (384 floats) |
 
-# Terminal 2 — Next.js frontend (http://localhost:3000, no login required)
-pnpm dev
+- Binds to `127.0.0.1:8001` by default (configurable via `EMBED_BIND` env var)
+- Model lazy-loaded on first request, kept in memory
+- If unavailable, `/api/search` returns HTTP 200 with empty results
 
-# Terminal 3 — Local embed server for semantic search (http://localhost:8001)
-source worker/.venv/bin/activate
-python worker/embed_server.py     # First run downloads ~80MB model, then cached
+---
 
-# Terminal 4 — Celery worker (LangGraph pipeline, requires OPENROUTER_API_KEY)
-source worker/.venv/bin/activate
-celery -A worker.celery_app.app worker --loglevel=info
+## 6. Security Model
 
-# Terminal 5 — APScheduler (RSS/Arxiv scraper cron)
-source worker/.venv/bin/activate
-python worker/main.py
-```
+| Measure | Implementation |
+|---------|---------------|
+| **API key isolation** | `OPENROUTER_API_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are server-side only. Never in client bundles. |
+| **Input sanitization** | All scraped HTML/RSS content is stripped with `bleach.clean(tags=[], strip=True)` before LLM processing. |
+| **XML protection** | RSS response size capped at 2 MB (`MAX_RSS_RESPONSE_BYTES`). `defusedxml` dependency for XML bomb prevention. |
+| **XSS prevention** | Code blocks rendered via `hast-util-to-jsx-runtime` instead of `dangerouslySetInnerHTML`. |
+| **Security headers** | `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy` (camera, mic, geolocation denied). |
+| **Error sanitization** | Server errors logged with full detail; client responses receive generic messages only. |
+| Network isolation | Embed server and Redis bind to `127.0.0.1` only. Non-essential Supabase services (Studio, Mailpit, Analytics) excluded from startup. Worker Dockerfile runs as non-root user. |
+| **RLS enforcement** | Supabase RLS ensures clients can only read `is_filtered = TRUE` articles. Writes require service role key. |
+| **Rate limiting** | HN scraper throttled with `Semaphore(20)`. Infinite scroll capped at 20 pages. |
+| **No auth surface** | Single-user design eliminates session fixation, JWT forgery, and credential stuffing vectors. |
 
-Terminals 4 and 5 require `OPENROUTER_API_KEY` in `worker/.env`. The frontend (terminals 1–3) works fully without it, serving seed/existing data.
+---
 
-### Environment Variables
+## 7. Environment Variables
 
-**`.env.local`** (Next.js):
+### `.env.local` (Next.js Frontend)
 
-| Variable | Purpose |
-|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase local instance URL |
-| `SUPABASE_SERVICE_ROLE_KEY` | Service role key for server-side writes |
-| `WORKER_EMBED_URL` | Embed server base URL (default: `http://localhost:8001`) |
-| `NEXT_PUBLIC_APP_URL` | App base URL |
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase instance URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Server-side DB access (bypasses RLS) |
+| `WORKER_EMBED_URL` | No | Embed server URL (default: `http://localhost:8001`) |
+| `NEXT_PUBLIC_APP_URL` | No | App base URL |
 
-**`worker/.env`** (Python pipeline):
+### `worker/.env` (Python Pipeline)
 
-| Variable | Purpose |
-|---|---|
-| `SUPABASE_URL` | Supabase URL |
-| `SUPABASE_SERVICE_ROLE_KEY` | DB write access |
-| `OPENROUTER_API_KEY` | Free key from https://openrouter.ai/keys |
-| `CELERY_BROKER_URL` | `redis://localhost:6379/0` |
-| `CELERY_RESULT_BACKEND` | `redis://localhost:6379/0` |
-| `RESEND_API_KEY` | Optional — weekly email digest only |
-| `DAILY_TOKEN_CAP` | Max tokens/day before pipeline auto-pauses (default: 400000) |
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `SUPABASE_URL` | Yes | Supabase URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes | DB write access |
+| `OPENROUTER_API_KEY` | Yes | Free key from [openrouter.ai/keys](https://openrouter.ai/keys) |
+| `CELERY_BROKER_URL` | Yes | `redis://localhost:6379/0` |
+| `CELERY_RESULT_BACKEND` | Yes | `redis://localhost:6379/0` |
+| `DAILY_TOKEN_CAP` | No | Max tokens/day before auto-pause (default: 400,000) |
+| `RESEND_API_KEY` | No | Weekly email digest (optional) |
+| `RESEND_FROM_EMAIL` | No | Sender email address for digests |
 
-## 9. Deployment & CI/CD
+---
 
-### Environments
-
-| Env | Frontend | Worker | Database |
-|---|---|---|---|
-| Development | `localhost:3000` | Local venv | Supabase CLI local instance |
-| Staging | Vercel Preview URL | Railway staging service | Supabase staging project |
-| Production | Vercel Production | Railway production service | Supabase production project |
-
-### GitHub Actions
+## 8. CI/CD Pipeline
 
 ```yaml
-# .github/workflows/ci.yml
-name: CI
-on: [push, pull_request]
-
+# .github/workflows/ci.yml — runs on push to main/dev and all PRs
 jobs:
-  frontend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v3
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm lint && pnpm typecheck
-
-  pipeline:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: '3.11' }
-      - run: pip install -r worker/requirements.txt
-      - run: pytest worker/tests/pipeline/ -v
-        # Runs sample articles through the noise filter.
-        # Asserts: >=95% technical pass rate, <=5% false positives.
+  frontend:     # pnpm install → typecheck → lint
+  pipeline:     # pip install → pytest (noise filter accuracy tests)
 ```
+
+### Quality Gates
+
+| Check | Tool | Threshold |
+|-------|------|-----------|
+| Type safety | `tsc --noEmit` | Zero errors |
+| Linting | ESLint 9 | Zero warnings |
+| Noise filter accuracy | pytest | ≥95% technical pass rate, ≤5% false positives |
+
+---
+
+## 9. Deployment Topology
+
+| Environment | Frontend | Worker | Database |
+|-------------|----------|--------|----------|
+| Development | `localhost:3000` | Local venv (5 terminals) | Supabase CLI local instance |
+| Production | Vercel (Hobby) | Railway (Docker) | Supabase cloud project |
 
 ### Worker Dockerfile
 
 ```dockerfile
-# worker/Dockerfile
 FROM python:3.11-slim
 WORKDIR /app
+RUN useradd --create-home worker
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-# Pre-download sentence-transformers model at build time to avoid cold-start delay
+RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
 COPY . .
+USER worker
 CMD ["python", "-m", "worker.main"]
 ```
 
-> In production, deploy `worker/embed_server.py` as a **separate Railway service** so the Next.js frontend can reach it over the network. Set `WORKER_EMBED_URL` in Vercel environment variables to the Railway service URL.
+> **Nota:** Se usa PyTorch CPU-only (`torch==2.11.0+cpu`) en lugar del build CUDA, lo que reduce la imagen del worker en ~3 GB.
 
-## 10. Security
+---
 
-- **`OPENROUTER_API_KEY`** and **`SUPABASE_SERVICE_ROLE_KEY`** live exclusively as Vercel/Railway environment variables. Never in source code, never in client-side bundles.
-- **Supabase Service Role Key** is used **only** in Next.js API routes (server-side) and the Python worker. The anon key (subject to RLS §3) is never used for writes.
-- **No auth attack surface** — removing the login system eliminates session fixation, JWT forgery, and credential stuffing vectors. All routes are implicitly internal (personal single-user app).
-- **Input sanitization:** All scraped HTML/RSS content is stripped with `bleach.clean(content, tags=[], strip=True)` before being sent to the LLM, preventing prompt injection via article content.
-- **Cost cap:** Celery task checks `llm_usage_log` at start. If today's token sum exceeds `DAILY_TOKEN_CAP`, the task raises `celery.exceptions.Ignore()` to drop it without retrying.
-- **OpenRouter free-tier:** No credit card required; worst case is a rate-limit error, not an unexpected bill.
+## 10. Cost Summary
 
-## 11. Observability
-
-| Tool | What It Monitors |
-|---|---|
-| Vercel Analytics | Core Web Vitals, P95 load time for the dashboard |
-| Railway Metrics | Worker CPU/memory, job queue depth |
-| Supabase Dashboard | Query performance, DB size, pgvector index health |
-| `llm_usage_log` table | Daily token count per model (all $0 with free OpenRouter models) |
-
-## 12. Cost Summary
-
-| Service | Cost |
-|---|---|
-| Supabase | Free ($0) |
-| Vercel | Free Hobby ($0) |
-| Railway (worker + embed server) | ~$5–10/month |
-| Redis (local Docker) | Free ($0) |
-| OpenRouter LLM | **Free ($0)** — free-tier models only |
-| Embeddings | **Free ($0)** — local sentence-transformers |
-| Resend (email digest) | Free ($0) — 100 emails/day |
-| **Total** | **~$5–10/month** (Railway only) |
+| Service | Monthly Cost |
+|---------|-------------|
+| Supabase (PostgreSQL + pgvector) | $0 |
+| Vercel (frontend hosting) | $0 |
+| Redis (local Docker) | $0 |
+| OpenRouter LLM inference | **$0** (free-tier models) |
+| Embeddings (local sentence-transformers) | **$0** |
+| Resend (weekly email digest) | $0 (100 emails/day free) |
+| Railway (worker container) | ~$5–10 |
+| **Total** | **~$5–10/month** |

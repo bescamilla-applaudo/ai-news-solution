@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { requireSupabase } from '@/lib/guards'
 
 const PAGE_SIZE = 20
 
 export async function GET(request: NextRequest) {
+  const guard = requireSupabase()
+  if (guard) return guard
+
   const { searchParams } = new URL(request.url)
   const page = Math.max(0, parseInt(searchParams.get('page') ?? '0', 10))
   const tag = searchParams.get('tag') ?? null

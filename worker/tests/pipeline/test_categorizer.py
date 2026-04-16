@@ -41,7 +41,7 @@ TECHNICAL_ARTICLES = [
             "claude-haiku-4-5 outperforms GPT-4o on MMMU and HumanEval-V by 4.2 pts."
         ),
         "source_url": "https://anthropic.com/news/claude-haiku-4-5",
-        "source_name": "anthropic",
+        "source_name": "huggingface",
     },
     {
         "title": "pgvector 0.8 adds HNSW indexing and parallel index builds",
@@ -54,7 +54,7 @@ TECHNICAL_ARTICLES = [
             "reduce build time by 3× on 16-core instances."
         ),
         "source_url": "https://github.com/pgvector/pgvector/releases/0.8.0",
-        "source_name": "github",
+        "source_name": "hn",
     },
     {
         "title": "OpenAI releases text-embedding-3-large v2 with 3072 dimensions",
@@ -80,7 +80,7 @@ TECHNICAL_ARTICLES = [
             "--method global 'What are the main themes?'"
         ),
         "source_url": "https://github.com/microsoft/graphrag/releases/v2",
-        "source_name": "github",
+        "source_name": "deepmind",
     },
     {
         "title": "Mixture-of-Agents: routing requests across specialized LLMs improves quality 12%",

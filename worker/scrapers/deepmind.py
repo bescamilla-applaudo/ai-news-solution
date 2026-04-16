@@ -1,6 +1,6 @@
 """
 Google DeepMind blog RSS scraper.
-Same pattern as the Anthropic/OpenAI scrapers — reuses fetch_rss() from rss.py.
+Same pattern as the HuggingFace/OpenAI scrapers — reuses fetch_rss() from rss.py.
 Polling interval: every 30 minutes (registered in main.py).
 """
 from __future__ import annotations

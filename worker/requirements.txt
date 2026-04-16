@@ -1,6 +1,8 @@
 langgraph==1.1.6
 openai==2.31.0          # used as OpenRouter client (compatible API)
 sentence-transformers==5.4.1  # local embeddings, no API key (all-MiniLM-L6-v2, 384 dims)
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.11.0+cpu       # CPU-only — no CUDA needed, saves ~3GB
 httpx==0.28.1
 feedparser==6.0.12
 supabase==2.28.3

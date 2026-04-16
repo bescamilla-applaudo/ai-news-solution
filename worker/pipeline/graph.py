@@ -19,6 +19,7 @@ import json
 import logging
 import operator
 import os
+import time
 from typing import Annotated, Literal, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -76,6 +77,23 @@ def _openrouter() -> OpenAI:
     )
 
 
+def _openrouter_chat(*, model: str, messages: list[dict], max_tokens: int = 512):
+    """Call OpenRouter with exponential backoff on 429 rate-limit errors."""
+    client = _openrouter()
+    for attempt in range(4):
+        try:
+            return client.chat.completions.create(
+                model=model, max_tokens=max_tokens, messages=messages,
+            )
+        except Exception as exc:
+            if getattr(exc, "status_code", None) == 429 and attempt < 3:
+                wait = 2 ** attempt * 5  # 5s, 10s, 20s
+                logger.warning("Rate-limited (429), retrying in %ds…", wait)
+                time.sleep(wait)
+                continue
+            raise
+
+
 # ---------------------------------------------------------------------------
 # Local sentence-transformers embedder (384 dims, no API key, no internet)
 # ---------------------------------------------------------------------------
@@ -124,8 +142,6 @@ def categorizer_node(state: PipelineState) -> dict:
     OpenRouter (Gemma 4 31B free): cheap first-pass classifier.
     Runs on 100% of articles.
     """
-    client = _openrouter()
-
     prompt = (
         "Classify the following article as exactly one of:\n"
         "Technical, Financial, Political, General\n\n"
@@ -141,7 +157,7 @@ def categorizer_node(state: PipelineState) -> dict:
     )
 
     try:
-        response = client.chat.completions.create(
+        response = _openrouter_chat(
             model=CATEGORIZER_MODEL,
             max_tokens=10,
             messages=[{"role": "user", "content": prompt}],
@@ -176,8 +192,6 @@ def evaluator_node(state: PipelineState) -> dict:
     OpenRouter (Nemotron 120B free): assigns scores, workflows, and tags.
     Runs only on Technical articles.
     """
-    client = _openrouter()
-
     prompt = (
         "You are a technical AI analyst evaluating an article for full-stack developers.\n\n"
         "Respond with a JSON object only. No markdown, no explanation.\n\n"
@@ -192,7 +206,7 @@ def evaluator_node(state: PipelineState) -> dict:
     )
 
     try:
-        response = client.chat.completions.create(
+        response = _openrouter_chat(
             model=EVALUATOR_MODEL,
             max_tokens=300,
             messages=[{"role": "user", "content": prompt}],
@@ -227,8 +241,6 @@ def summarizer_node(state: PipelineState) -> dict:
     OpenRouter (Nemotron 120B free): generates technical_summary + implementation_steps.
     CONSTRAINT: only include code that is literally present in raw_content.
     """
-    client = _openrouter()
-
     prompt = (
         "You are a technical writer for full-stack developers.\n\n"
         "Write a technical summary of this article in Markdown.\n"
@@ -250,7 +262,7 @@ def summarizer_node(state: PipelineState) -> dict:
     )
 
     try:
-        response = client.chat.completions.create(
+        response = _openrouter_chat(
             model=SUMMARIZER_MODEL,
             max_tokens=1500,
             messages=[{"role": "user", "content": prompt}],

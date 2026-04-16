@@ -1,36 +1,148 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI News Intelligence Platform
 
-## Getting Started
+> **An AI-powered news aggregation system that delivers purely technical AI news to developers — filtering out all financial, political, and hype-based noise.**
 
-First, run the development server:
+Built with Next.js 16, Supabase, LangGraph, and OpenRouter free-tier LLMs.  
+**Total cost: $0/month for local development.**
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+---
+
+## What It Does
+
+The platform scrapes 5 sources (HuggingFace, OpenAI, DeepMind, Arxiv, Hacker News), runs each article through an agentic LLM pipeline, and presents only high-signal technical content in a developer-first dashboard.
+
+### Pipeline
+
+```
+RSS/API Sources → Scraper (APScheduler) → Celery Queue → LangGraph Pipeline
+  → Noise Filter (Gemma 4 31B) → Evaluator + Summarizer (Nemotron 120B)
+  → Embedder (local MiniLM) → Supabase (PostgreSQL + pgvector)
+  → Next.js Dashboard
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Key Features
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **LLM Noise Filter** — 3-node agentic pipeline classifies, scores, and summarizes every article
+- **Semantic Search** — Cmd+K search powered by local sentence-transformers (384-dim embeddings) + pgvector
+- **Zero-cost LLM** — All inference via OpenRouter free-tier models ($0)
+- **Local embeddings** — sentence-transformers/all-MiniLM-L6-v2 runs locally, no API key needed
+- **Impact scoring** — Articles ranked 1–10 on developer workflow impact and technical depth
+- **Implementation guides** — AI-generated step-by-step implementation with code snippets
+- **Technology watchlist** — Follow specific technologies (LangGraph, RAG, Claude, etc.)
+- **Weekly email digest** — Auto-generated intelligence brief via Resend (optional)
+- **Data retention** — Automated cleanup of old/discarded articles
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## Tech Stack
 
-To learn more about Next.js, take a look at the following resources:
+| Layer | Technology |
+|-------|-----------|
+| Frontend | Next.js 16 (App Router) · React 19 · Tailwind CSS v4 · Shadcn/UI |
+| State | TanStack React Query v5 |
+| Backend | Python 3.11 · LangGraph · Celery · APScheduler |
+| LLM | OpenRouter (Gemma 4 31B + Nemotron 120B) — **$0** |
+| Embeddings | sentence-transformers/all-MiniLM-L6-v2 — **local, $0** |
+| Database | Supabase (PostgreSQL 15 + pgvector) |
+| Queue | Redis (Docker) |
+| CI/CD | GitHub Actions |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Quick Start
 
-## Deploy on Vercel
+### 1. Clone and install
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+git clone https://github.com/bescamilla-applaudo/ai-news-solution.git
+cd ai-news-solution
+pnpm install
+cd worker && python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### 2. Configure environment
+
+```bash
+# Frontend
+cp .env.local.example .env.local   # Set SUPABASE keys
+
+# Worker
+cp worker/.env.example worker/.env  # Set OPENROUTER_API_KEY
+```
+
+Get a free OpenRouter API key at [openrouter.ai/keys](https://openrouter.ai/keys).
+
+### 3. Start (5 terminals)
+
+```bash
+bash setup-docker.sh                                            # Terminal 1: Supabase + Redis
+pnpm dev                                                         # Terminal 2: Next.js
+source worker/.venv/bin/activate && python worker/embed_server.py  # Terminal 3: Embed server
+source worker/.venv/bin/activate && celery -A worker.celery_app.app worker --loglevel=info  # Terminal 4: Celery
+source worker/.venv/bin/activate && python worker/main.py          # Terminal 5: Scheduler
+```
+
+Open **http://localhost:3000** — no login required.
+
+> See [RUNBOOK.md](RUNBOOK.md) for detailed startup/shutdown instructions.
+
+---
+
+## Architecture
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full technical design including:
+- System overview and data flow diagrams
+- Database schema and RLS policies
+- LangGraph pipeline topology
+- Security model
+- Deployment topology
+
+---
+
+## Project Structure
+
+```
+app/                    # Next.js App Router (pages + API routes)
+├── api/                # REST API endpoints
+├── article/[id]/       # Article detail page
+├── search/             # Semantic search page
+├── watchlist/           # Technology watchlist page
+└── admin/usage/        # LLM usage dashboard
+
+components/             # React components (Shadcn/UI)
+lib/                    # Shared utilities (Supabase client, types)
+
+worker/                 # Python agentic pipeline
+├── pipeline/           # LangGraph graph definition
+├── scrapers/           # RSS, Arxiv, HN, DeepMind scrapers
+├── tasks/              # Celery tasks (process_article, weekly_brief, cleanup_db)
+├── tests/              # Pipeline accuracy tests
+├── embed_server.py     # Local embedding HTTP server
+├── main.py             # APScheduler entry point
+└── celery_app.py       # Celery configuration
+
+supabase/migrations/    # SQL migrations (schema + seed data + retention)
+.github/                # CI/CD workflows + agent definitions
+```
+
+---
+
+## Quality Assurance
+
+```bash
+pnpm typecheck          # TypeScript type checking (zero errors)
+pnpm lint               # ESLint (zero warnings)
+pytest worker/tests/ -v # Pipeline noise filter accuracy tests
+```
+
+---
+
+## Author
+
+**Bryan Escamilla** — Applaudo Studios
+
+---
+
+## License
+
+Private — Applaudo Studios. All rights reserved.

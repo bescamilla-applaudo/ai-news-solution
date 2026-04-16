@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { requireSupabase } from '@/lib/guards'
 
 // Cost per 1M tokens (USD) — OpenRouter free models are $0, kept for future paid models
 const MODEL_COST: Record<string, { input: number; output: number }> = {
@@ -19,6 +20,9 @@ function estimateCost(model: string, inputTokens: number, outputTokens: number):
  * Protected: requires valid session cookie (single-user — if you're logged in, you're the admin).
  */
 export async function GET() {
+  const guard = requireSupabase()
+  if (guard) return guard
+
   const { data, error } = await supabase
     .from('llm_usage_log')
     .select('timestamp, model, input_tokens, output_tokens')

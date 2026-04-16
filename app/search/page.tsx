@@ -101,6 +101,7 @@ function SearchContent() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [searched, setSearched] = useState(false)
+  const [abortRef] = useState<{ current: AbortController | null }>({ current: null })
 
   const debouncedQuery = useDebounce(query, 300)
 
@@ -112,25 +113,37 @@ function SearchContent() {
       return
     }
 
+    // Abort any in-flight request before starting a new one
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
     setLoading(true)
     setError(null)
 
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}`)
+      const res = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}`, {
+        signal: controller.signal,
+      })
       if (res.status === 429) {
         setError('Too many searches. Please wait a moment.')
+        return
+      }
+      if (res.status === 503) {
+        setError('Search service is temporarily unavailable.')
         return
       }
       if (!res.ok) throw new Error('Search failed')
       const json = await res.json()
       setResults(json.data ?? [])
       setSearched(true)
-    } catch {
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       setError('Search failed. Please try again.')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [abortRef])
 
   useEffect(() => {
     doSearch(debouncedQuery)

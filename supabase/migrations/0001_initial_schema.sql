@@ -14,7 +14,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE IF NOT EXISTS news_items (
   id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   source_url           TEXT UNIQUE NOT NULL,
-  source_name          TEXT NOT NULL,           -- 'anthropic' | 'openai' | 'arxiv' | 'deepmind' | 'github' | 'hn'
+  source_name          TEXT NOT NULL,           -- 'huggingface' | 'openai' | 'arxiv' | 'deepmind' | 'hn'
   title                TEXT NOT NULL,
   raw_content          TEXT,
   technical_summary    TEXT,
@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS news_items (
   depth_score          SMALLINT CHECK (depth_score BETWEEN 1 AND 10),
   implementation_steps JSONB,                   -- [{"step": 1, "description": "...", "code": "...", "link": "..."}]
   affected_workflows   TEXT[],
-  embedding            VECTOR(1536),            -- text-embedding-3-small; populated by pipeline
+  embedding            VECTOR(1536),            -- all-MiniLM-L6-v2 (384 dims after migration 0003); populated by pipeline
   category             TEXT,                    -- 'Technical' | 'Financial' | 'Political' | 'General'
   tags                 TEXT[],                  -- denormalized tag names (source of truth: news_item_tags)
   published_at         TIMESTAMPTZ,
@@ -43,14 +43,14 @@ CREATE TABLE IF NOT EXISTS news_item_tags (
 );
 
 CREATE TABLE IF NOT EXISTS user_watchlist (
-  user_id     TEXT NOT NULL,                    -- Clerk user ID (JWT sub claim)
+  user_id     TEXT NOT NULL,                    -- Single-user app (hardcoded 'owner')
   tech_tag_id UUID NOT NULL REFERENCES tech_tags(id) ON DELETE CASCADE,
   created_at  TIMESTAMPTZ DEFAULT NOW(),
   PRIMARY KEY (user_id, tech_tag_id)
 );
 
 CREATE TABLE IF NOT EXISTS email_subscriptions (
-  user_id    TEXT PRIMARY KEY,                  -- Clerk user ID
+  user_id    TEXT PRIMARY KEY,                  -- Single-user app (hardcoded 'owner')
   email      TEXT NOT NULL,
   active     BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ DEFAULT NOW()

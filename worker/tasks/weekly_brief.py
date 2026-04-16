@@ -16,10 +16,13 @@ Upgrade to Resend Starter ($20/mo) for 50K emails/month.
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import logging
 import os
 from datetime import datetime, timedelta, timezone
 
+import bleach
 from openai import OpenAI
 import httpx
 
@@ -93,7 +96,7 @@ def _send_email(to: str, subject: str, html_body: str) -> bool:
             RESEND_API_URL,
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
             json={
-                "from": "AI Intelligence <brief@your-domain.com>",
+                "from": f"AI Intelligence <{os.environ.get('RESEND_FROM_EMAIL', 'brief@your-domain.com')}>",
                 "to": [to],
                 "subject": subject,
                 "html": html_body,
@@ -110,7 +113,7 @@ def _send_email(to: str, subject: str, html_body: str) -> bool:
 
 
 def _markdown_to_html(md: str) -> str:
-    """Minimal Markdown → HTML for email: links, bold, paragraphs."""
+    """Minimal Markdown → HTML for email: links, bold, paragraphs. Sanitised via bleach."""
     import re
     # Links: [text](url)
     md = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2">\1</a>', md)
@@ -118,7 +121,20 @@ def _markdown_to_html(md: str) -> str:
     md = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', md)
     # Paragraphs / line breaks
     paragraphs = [f'<p>{p.strip()}</p>' for p in md.split('\n\n') if p.strip()]
-    return '\n'.join(paragraphs)
+    raw_html = '\n'.join(paragraphs)
+    # Sanitise to prevent XSS from LLM output
+    return bleach.clean(
+        raw_html,
+        tags=['p', 'a', 'strong', 'em', 'br'],
+        attributes={'a': ['href']},
+        protocols=['https', 'http'],
+    )
+
+
+def _unsubscribe_token(user_id: str) -> str:
+    """Generate an HMAC-SHA256 token for safe unsubscribe links (no raw user_id in URL)."""
+    secret = os.environ.get("HMAC_SECRET", "change-me-in-production")
+    return hmac.new(secret.encode(), user_id.encode(), hashlib.sha256).hexdigest()
 
 
 def send_weekly_brief() -> None:
@@ -160,12 +176,17 @@ def send_weekly_brief() -> None:
     sent = 0
 
     for sub in subscribers:
+        token = _unsubscribe_token(sub["user_id"])
+        app_url = os.environ.get("APP_URL", "http://localhost:3000")
+        unsub_link = f'{app_url}/api/unsubscribe?uid={sub["user_id"]}&token={token}'
         html = (
             '<div style="font-family:sans-serif;max-width:600px;margin:0 auto;'
             'color:#e4e4e7;background:#09090b;padding:32px">'
-            f'<h2 style="font-size:16px;font-weight:600;margin-bottom:16px">{subject}</h2>'
+            f'<h2 style="font-size:16px;font-weight:600;margin-bottom:16px">{bleach.clean(subject)}</h2>'
             + _markdown_to_html(digest_md)
-            + '</div>'
+            + f'<p style="margin-top:24px;font-size:11px;color:#71717a">'
+            f'<a href="{unsub_link}" style="color:#71717a">Unsubscribe</a></p>'
+            '</div>'
         )
         if _send_email(sub["email"], subject, html):
             sent += 1

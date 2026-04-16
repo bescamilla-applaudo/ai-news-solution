@@ -41,18 +41,19 @@ export function CommandPalette() {
     return () => document.removeEventListener('keydown', handler)
   }, [])
 
-  // Debounced search
-  const search = useCallback(async (q: string) => {
+  // Debounced search with AbortController to cancel stale requests
+  const search = useCallback(async (q: string, signal: AbortSignal) => {
     if (q.trim().length < 2) {
       setResults([])
       return
     }
     setLoading(true)
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`)
+      const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal })
       const json = await res.json()
       setResults(json.data ?? [])
-    } catch {
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       setResults([])
     } finally {
       setLoading(false)
@@ -60,8 +61,12 @@ export function CommandPalette() {
   }, [])
 
   useEffect(() => {
-    const timer = setTimeout(() => search(query), 300)
-    return () => clearTimeout(timer)
+    const controller = new AbortController()
+    const timer = setTimeout(() => search(query, controller.signal), 300)
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
   }, [query, search])
 
   const handleSelect = (id: string) => {

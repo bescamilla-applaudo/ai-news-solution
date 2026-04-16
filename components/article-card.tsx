@@ -44,11 +44,10 @@ export function ArticleCard({ article, minimal = false }: ArticleCardProps) {
     .slice(0, 3) ?? []
 
   const sourceBadgeColor: Record<string, string> = {
-    anthropic: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
+    huggingface: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
     openai: 'bg-green-500/10 text-green-400 border-green-500/20',
     arxiv: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
     deepmind: 'bg-violet-500/10 text-violet-400 border-violet-500/20',
-    github: 'bg-zinc-500/10 text-zinc-300 border-zinc-500/20',
     hn: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
   }
   const sourceBg = sourceBadgeColor[article.source_name] ?? 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'

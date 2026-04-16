@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import { requireSupabase } from '@/lib/guards'
 
 export async function GET(request: NextRequest) {
+  const guard = requireSupabase()
+  if (guard) return guard
+
   const query = new URL(request.url).searchParams.get('q')?.trim()
   if (!query || query.length < 2) {
     return NextResponse.json({ data: [] })
+  }
+  if (query.length > 200) {
+    return NextResponse.json({ error: 'Query too long' }, { status: 400 })
   }
 
   try {
@@ -22,7 +29,7 @@ export async function GET(request: NextRequest) {
     if (!embedRes.ok) {
       return NextResponse.json(
         { data: [], error: 'Embedding service unavailable' },
-        { status: 200 }
+        { status: 503 }
       )
     }
 
@@ -43,6 +50,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data: data ?? [] })
   } catch (err) {
     console.error('[/api/search] Unexpected error:', err)
-    return NextResponse.json({ data: [], error: 'Search temporarily unavailable' }, { status: 200 })
+    return NextResponse.json({ data: [], error: 'Search temporarily unavailable' }, { status: 503 })
   }
 }

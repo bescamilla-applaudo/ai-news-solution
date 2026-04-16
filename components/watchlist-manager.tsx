@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState } from 'react'
 import { TechTag } from '@/lib/database.types'
 
 interface WatchlistManagerProps {
@@ -10,10 +10,12 @@ interface WatchlistManagerProps {
 
 export function WatchlistManager({ allTags, watchedTagIds: initial }: WatchlistManagerProps) {
   const [watched, setWatched] = useState<Set<string>>(new Set(initial))
-  const [isPending, startTransition] = useTransition()
+  const [inflight, setInflight] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
 
-  const toggle = (tag: TechTag) => {
+  const toggle = async (tag: TechTag) => {
+    if (inflight.has(tag.id)) return // prevent double-clicks on this specific tag
+
     const isWatched = watched.has(tag.id)
 
     // Optimistic update
@@ -23,32 +25,37 @@ export function WatchlistManager({ allTags, watchedTagIds: initial }: WatchlistM
       return next
     })
     setError(null)
+    setInflight((prev) => new Set(prev).add(tag.id))
 
-    startTransition(async () => {
-      try {
-        const res = await fetch('/api/watchlist', {
-          method: isWatched ? 'DELETE' : 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tech_tag_id: tag.id }),
-        })
-        if (!res.ok) {
-          // Roll back on failure
-          setWatched((prev) => {
-            const next = new Set(prev)
-            if (isWatched) { next.add(tag.id) } else { next.delete(tag.id) }
-            return next
-          })
-          setError('Failed to update watchlist')
-        }
-      } catch {
+    try {
+      const res = await fetch('/api/watchlist', {
+        method: isWatched ? 'DELETE' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tech_tag_id: tag.id }),
+      })
+      if (!res.ok) {
+        // Roll back on failure
         setWatched((prev) => {
           const next = new Set(prev)
           if (isWatched) { next.add(tag.id) } else { next.delete(tag.id) }
           return next
         })
-        setError('Network error')
+        setError('Failed to update watchlist')
       }
-    })
+    } catch {
+      setWatched((prev) => {
+        const next = new Set(prev)
+        if (isWatched) { next.add(tag.id) } else { next.delete(tag.id) }
+        return next
+      })
+      setError('Network error')
+    } finally {
+      setInflight((prev) => {
+        const next = new Set(prev)
+        next.delete(tag.id)
+        return next
+      })
+    }
   }
 
   return (
@@ -62,16 +69,17 @@ export function WatchlistManager({ allTags, watchedTagIds: initial }: WatchlistM
       <div className="space-y-1.5">
         {allTags.map((tag) => {
           const active = watched.has(tag.id)
+          const busy = inflight.has(tag.id)
           return (
             <button
               key={tag.id}
               onClick={() => toggle(tag)}
-              disabled={isPending}
+              disabled={busy}
               className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-xs transition-colors ${
                 active
                   ? 'bg-zinc-100 text-zinc-900 border-zinc-100'
                   : 'border-zinc-800 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200'
-              } ${isPending ? 'opacity-50 cursor-not-allowed' : ''}`}
+              } ${busy ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               <span>{tag.name}</span>
               {active && (

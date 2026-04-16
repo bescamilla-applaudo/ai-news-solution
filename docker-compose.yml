@@ -1,0 +1,104 @@
+# docker-compose.yml — Run the entire AI News Platform with a single command.
+#
+# Usage:
+#   docker compose up --build        # build & start all services
+#   docker compose up -d             # detached mode
+#   docker compose logs -f           # follow all logs
+#   docker compose down              # stop everything
+#
+# Prerequisites:
+#   1. Supabase local must be running:  supabase start
+#   2. Copy env files:
+#        cp .env.example .env.local
+#        cp worker/.env.example worker/.env
+#      Then fill in OPENROUTER_API_KEY in worker/.env
+#
+# Architecture:
+#   ┌─────────────┐  ┌──────────────┐  ┌──────────────┐
+#   │  frontend   │  │   worker     │  │ embed-server │
+#   │  (Next.js)  │  │ (APScheduler │  │ (sentence-   │
+#   │  port 3000  │  │  + Celery)   │  │  transformers│
+#   └──────┬──────┘  └──────┬───────┘  │  port 8001)  │
+#          │                │          └──────┬───────┘
+#          │         ┌──────┴───────┐         │
+#          │         │    redis     │         │
+#          │         │  port 6379   │         │
+#          │         └──────────────┘         │
+#          └──── Supabase (external) ─────────┘
+
+services:
+  # ── Redis (Celery broker & result backend) ──────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis-data:/data
+
+  # ── Embed Server (local sentence-transformers, no API key) ──────────
+  embed-server:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    command: python embed_server.py
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8001:8001"
+    environment:
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+
+  # ── Worker (APScheduler + Celery in one process) ────────────────────
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    command: python -m worker.main
+    restart: unless-stopped
+    env_file:
+      - ./worker/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      # Override localhost → host.docker.internal so containers reach Supabase on the host
+      - SUPABASE_URL=http://host.docker.internal:54321
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ── Frontend (Next.js dev server) ───────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    env_file:
+      - .env.local
+    environment:
+      - WORKER_EMBED_URL=http://embed-server:8001
+      # Override localhost → host.docker.internal so containers reach Supabase on the host
+      - NEXT_PUBLIC_SUPABASE_URL=http://host.docker.internal:54321
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      embed-server:
+        condition: service_healthy
+
+volumes:
+  redis-data:

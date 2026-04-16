@@ -9,7 +9,7 @@
 # Prerequisites:
 #   1. Supabase local must be running:  supabase start --exclude edge-runtime,studio,mailpit,logflare,vector
 #   2. Copy env files:
-#        cp .env.example .env.local
+#        cp .env.local.example .env.local
 #        cp worker/.env.example worker/.env
 #      Then fill in OPENROUTER_API_KEY in worker/.env
 #

@@ -66,8 +66,8 @@ jobs:
       - name: Install dependencies
         run: pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
 
-      - name: Run unit tests (scrapers + embed server)
-        run: pytest tests/scrapers/ tests/test_embed_server.py -v --tb=short
+      - name: Run unit tests (scrapers + embed server + daily cap)
+        run: pytest tests/scrapers/ tests/test_embed_server.py tests/pipeline/test_daily_cap.py -v --tb=short
 
   # ---------------------------------------------------------------------------
   # Pipeline accuracy tests (requires API keys — only on main)
@@ -99,8 +99,8 @@ jobs:
       - name: Install dependencies
         run: pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
 
-      - name: Run accuracy tests
-        run: pytest tests/pipeline/ -v --tb=short
+      - name: Run accuracy tests (categorizer — requires API keys)
+        run: pytest tests/pipeline/test_categorizer.py -v --tb=short
 
   # ---------------------------------------------------------------------------
   # Docker build (validates Dockerfile without pushing)

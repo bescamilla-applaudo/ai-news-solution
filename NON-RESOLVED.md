@@ -225,9 +225,9 @@ No hay forma de exportar artículos a JSON o CSV. Mencionado en `IMPROVEMENTS.md
 
 ---
 
-### 19. Página `/login` — CARPETA VACÍA
+### 19. Autenticación multi-usuario — NO IMPLEMENTADA (decisión de diseño)
 
-El directorio `app/login/` existe pero no tiene `page.tsx`. Actualmente la app usa un modelo single-user con `OWNER_ID='owner'` hardcodeado (decisión de diseño intencional). Si se quisiera auth multi-usuario, habría que implementar flujo completo con Supabase Auth.
+La app usa un modelo single-user con `OWNER_ID='owner'` hardcodeado. Los directorios `app/login/`, `app/actions/`, `app/api/auth/` y `hooks/` fueron eliminados en la iteración 2 (cleanup). Si se quisiera auth multi-usuario, habría que implementar flujo completo con Supabase Auth.
 
 **Nota:** Esto es una decisión de arquitectura, no un bug. Documentado en `ARCHITECTURE.md`.
 

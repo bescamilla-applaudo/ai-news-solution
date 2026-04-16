@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import date
+from datetime import datetime, timezone
 
 from celery.exceptions import Ignore
 
@@ -24,7 +24,7 @@ DAILY_TOKEN_CAP = int(os.environ.get("DAILY_TOKEN_CAP", "400000"))
 def _tokens_used_today() -> int:
     """Sum input + output tokens logged today via llm_usage_log."""
     db = get_supabase()
-    today = date.today().isoformat()
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     res = (
         db.table("llm_usage_log")
         .select("input_tokens, output_tokens")
@@ -57,14 +57,15 @@ def process_article(
         raw_content: Sanitized plain-text body (bleach-stripped).
         published_at: ISO-8601 timestamp or None.
     """
-    # --- Cost gate ---
-    tokens_today = _tokens_used_today()
-    if tokens_today >= DAILY_TOKEN_CAP:
-        logger.warning(
-            "Daily token cap reached (%d / %d). Ignoring task for %s.",
-            tokens_today, DAILY_TOKEN_CAP, source_url,
-        )
-        raise Ignore()
+    # --- Cost gate (skip if DAILY_TOKEN_CAP=0, i.e. unlimited) ---
+    if DAILY_TOKEN_CAP > 0:
+        tokens_today = _tokens_used_today()
+        if tokens_today >= DAILY_TOKEN_CAP:
+            logger.warning(
+                "Daily token cap reached (%d / %d). Ignoring task for %s.",
+                tokens_today, DAILY_TOKEN_CAP, source_url,
+            )
+            raise Ignore()
 
     # --- Pipeline ---
     try:

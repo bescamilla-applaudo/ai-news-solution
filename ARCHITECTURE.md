@@ -340,8 +340,8 @@ The embed server (`worker/embed_server.py`) is a lightweight HTTP server (Python
 # .github/workflows/ci.yml — runs on push to main/dev and all PRs
 jobs:
   frontend:          # pnpm install → typecheck → lint → vitest (38 tests: 13 API + 25 components)
-  pipeline:          # pip install → pytest scrapers + embed server + daily cap (24 unit tests)
-  pipeline-accuracy: # pytest pipeline accuracy (main branch only, requires API keys)
+  pipeline:          # pip install → pytest scrapers + embed server + daily cap (24 unit tests, no API keys)
+  pipeline-accuracy: # pytest categorizer accuracy (main branch only, requires API keys — 3 tests)
   docker:            # docker build validation (no push)
 ```
 
@@ -352,10 +352,9 @@ jobs:
 | Type safety | `tsc --noEmit` | Zero errors |
 | Linting | ESLint 9 | Zero warnings |
 | Frontend tests | vitest | 38 tests (13 API routes + 25 React components) |
-| Scraper + embed tests | pytest | 19 tests (RSS, HN, Arxiv, embed server) |
-| Pipeline unit tests | pytest | 5 tests (daily token cap enforcement) |
+| Scraper + embed + daily cap tests | pytest | 24 tests (RSS, HN, Arxiv, embed server, daily token cap) |
 | E2E tests | Playwright | 5 tests (navigation flows) |
-| Noise filter accuracy | pytest | ≥95% technical pass rate (main branch only) |
+| Noise filter accuracy | pytest | 3 tests, ≥95% pass rate (main branch only, requires API keys) |
 | Docker build | `docker build` | Image builds successfully |
 
 ---
@@ -364,7 +363,7 @@ jobs:
 
 | Environment | Frontend | Worker | Database |
 |-------------|----------|--------|----------|
-| Development | `localhost:3000` | Local venv (5 terminals) | Supabase CLI local instance |
+| Development | `localhost:3000` | Docker Compose (2 terminals) or local venv (5 terminals) | Supabase CLI local instance |
 | Production | Vercel (Hobby) | Railway (Docker) | Supabase cloud project |
 
 ### Worker Dockerfile

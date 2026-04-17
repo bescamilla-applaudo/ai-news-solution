@@ -280,16 +280,18 @@ def categorizer_node(state: PipelineState) -> dict:
         return {"category": "Error", "error": str(exc)}
 
 
-TECH_TAGS_VOCABULARY = [
-    "Multi-Agent", "LLM-Release", "RAG", "Dev-Tools", "Research",
-    "Methodologies", "LangGraph", "Claude", "Agents", "Embeddings",
+TECH_TAGS_EXAMPLES = [
+    "LLM", "Agents", "RAG", "Multi-Agent", "Dev-Tools", "Fine-Tuning",
+    "Embeddings", "Reasoning", "Code-Generation", "Vision", "MCP",
+    "Evaluation", "Inference", "Open-Source", "Diffusion", "RL",
 ]
 
 
 def evaluator_node(state: PipelineState) -> dict:
     """
     OpenRouter (Nemotron 120B free): assigns scores, workflows, and tags.
-    Runs only on Technical articles.
+    Tags are LLM-generated — not constrained to a fixed vocabulary.
+    New tags are auto-created in the database by storage_node.
     """
     prompt = (
         "You are a technical AI analyst evaluating an article for full-stack developers.\n\n"
@@ -298,7 +300,11 @@ def evaluator_node(state: PipelineState) -> dict:
         "- depth_score: integer 1-10 (1=surface overview, 10=deep technical implementation detail)\n"
         "- impact_score: integer 1-10 (1=minor, 10=fundamentally changes developer workflows)\n"
         "- affected_workflows: list of up to 4 strings naming developer workflows this affects\n"
-        f"- tags: list of matching tags from this vocabulary: {json.dumps(TECH_TAGS_VOCABULARY)}\n\n"
+        "- tags: list of 1-4 short, specific technology tags that describe this article's core topics.\n"
+        "  Use PascalCase or hyphenated format (e.g. 'Multi-Agent', 'Code-Generation', 'Fine-Tuning').\n"
+        "  Focus on the KEY TECHNOLOGY or METHODOLOGY, not generic terms.\n"
+        "  Prefer tags that a developer would search for.\n"
+        f"  Here are some example tags (but you can create new ones): {json.dumps(TECH_TAGS_EXAMPLES)}\n\n"
         f"Article title: {state['title']}\n"
         f"Article content: {state['raw_content'][:1500]}\n\n"
         "JSON response:"
@@ -316,11 +322,18 @@ def evaluator_node(state: PipelineState) -> dict:
         result = _parse_llm_json(text)
 
         usage = response.usage
+        # Validate tags: keep well-formed, short tags (max 30 chars, no weird characters)
+        raw_tags = result.get("tags", [])[:4]
+        valid_tags = [
+            t.strip() for t in raw_tags
+            if isinstance(t, str) and 1 < len(t.strip()) <= 30
+            and t.strip().replace("-", "").replace(" ", "").isalnum()
+        ]
         return {
             "depth_score": max(1, min(10, int(result.get("depth_score", 5)))),
             "impact_score": max(1, min(10, int(result.get("impact_score", 5)))),
             "affected_workflows": result.get("affected_workflows", [])[:4],
-            "tags": [t for t in result.get("tags", []) if t in TECH_TAGS_VOCABULARY],
+            "tags": valid_tags,
             "llm_tokens": [{
                 "model": model,
                 "input_tokens": usage.prompt_tokens if usage else 0,
@@ -428,8 +441,21 @@ def storage_node(state: PipelineState) -> dict:
     tag_names = state.get("tags", [])
     tag_ids: list[str] = []
     if tag_names:
+        # Look up existing tags
         res = db.table("tech_tags").select("id, name").in_("name", tag_names).execute()
-        tag_ids = [row["id"] for row in (res.data or [])]
+        existing = {row["name"]: row["id"] for row in (res.data or [])}
+
+        # Auto-create any new tags the LLM suggested
+        new_tags = [name for name in tag_names if name not in existing]
+        if new_tags:
+            insert_data = [{"name": name, "category": "auto"} for name in new_tags]
+            new_res = db.table("tech_tags").upsert(
+                insert_data, on_conflict="name"
+            ).execute()
+            for row in (new_res.data or []):
+                existing[row["name"]] = row["id"]
+
+        tag_ids = [existing[name] for name in tag_names if name in existing]
 
     article_data = {
         "source_url": state["source_url"],

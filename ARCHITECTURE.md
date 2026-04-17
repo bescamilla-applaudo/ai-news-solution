@@ -260,6 +260,9 @@ app/
     ├── article/[id]/related/     # GET → Top 5 by vector similarity
     │   └── route.ts
     ├── watchlist/route.ts        # GET / POST / DELETE (OWNER_ID='owner')
+    ├── tags/route.ts             # GET → Dynamic tags list (from tech_tags table)
+    ├── email-subscribe/route.ts  # GET status / POST subscribe (email + owner upsert)
+    ├── unsubscribe/route.ts      # GET → HMAC-validated unsubscribe, returns HTML
     └── admin/usage/route.ts      # GET → Token usage data (service role)
 ```
 
@@ -267,7 +270,8 @@ app/
 
 | Component | Purpose |
 |-----------|---------|
-| `NewsFeed` | Infinite-scroll article list sorted by impact score. Client-side tag filtering. Capped at 20 pages. |
+| `NewsFeed` | Infinite-scroll article list sorted by impact score. Dynamic tag filtering via `/api/tags`. Capped at 20 pages with truncation indicator. |
+| `EmailSubscribe` | Inline subscribe form for weekly brief. React Query for state. Shows active status or input form. |
 | `ArticleCard` | Compact card: title, source badge, score bars, top 3 tags, relative time. |
 | `CodeBlock` | Syntax-highlighted code via shiki with secure `hast-util-to-jsx-runtime` rendering (no `dangerouslySetInnerHTML`). |
 | `CommandPalette` | Cmd+K / Ctrl+K modal. 300ms debounce. Graceful empty state if embed server unavailable. |
@@ -303,7 +307,10 @@ The embed server (`worker/embed_server.py`) is a lightweight HTTP server (Python
 | **Error sanitization** | Server errors logged with full detail; client responses receive generic messages only. |
 | Network isolation | Embed server and Redis bind to `127.0.0.1` only. Non-essential Supabase services (Studio, Mailpit, Analytics) excluded from startup. Worker Dockerfile runs as non-root user. |
 | **RLS enforcement** | Supabase RLS ensures clients can only read `is_filtered = TRUE` articles. Writes require service role key. |
-| **Rate limiting** | HN scraper throttled with `Semaphore(20)`. Infinite scroll capped at 20 pages. |
+| **Rate limiting** | In-memory sliding-window rate limiter on all API routes (10-60 req/min per endpoint). HN scraper throttled with `Semaphore(20)`. Infinite scroll capped at 20 pages. |
+| **Error tracking** | Sentry integration for both Next.js (`@sentry/nextjs`) and Python worker (`sentry-sdk`). DSNs via env vars — no-op when unset. |
+| **Structured logging** | `structlog` with JSON output in production (`LOG_FORMAT=json`), colored console in development. |
+| **ARIA accessibility** | All interactive components have proper `role`, `aria-label`, `aria-pressed`, and `aria-live` attributes. |
 | **No auth surface** | Single-user design eliminates session fixation, JWT forgery, and credential stuffing vectors. |
 
 ---
@@ -317,8 +324,8 @@ The embed server (`worker/embed_server.py`) is a lightweight HTTP server (Python
 | `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase instance URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes | Server-side DB access (bypasses RLS) |
 | `WORKER_EMBED_URL` | No | Embed server URL (default: `http://localhost:8001`) |
-| `NEXT_PUBLIC_APP_URL` | No | App base URL |
-
+| `NEXT_PUBLIC_APP_URL` | No | App base URL || `NEXT_PUBLIC_SENTRY_DSN` | No | Sentry DSN for Next.js error tracking |
+| `SENTRY_AUTH_TOKEN` | No | Sentry auth token for source map upload (production builds) |
 ### `worker/.env` (Python Pipeline)
 
 | Variable | Required | Purpose |
@@ -331,6 +338,9 @@ The embed server (`worker/embed_server.py`) is a lightweight HTTP server (Python
 | `DAILY_TOKEN_CAP` | No | Max tokens/day before auto-pause (default: 400,000) |
 | `RESEND_API_KEY` | No | Weekly email digest (optional) |
 | `HMAC_SECRET` | No | HMAC-SHA256 key for unsubscribe tokens (weekly brief) |
+| `SENTRY_WORKER_DSN` | No | Sentry DSN for Python worker error tracking |
+| `LOG_FORMAT` | No | `json` (production) or `dev` (colored console). Default: `dev` |
+| `LOG_LEVEL` | No | Python log level. Default: `INFO` |
 
 ---
 
@@ -339,7 +349,7 @@ The embed server (`worker/embed_server.py`) is a lightweight HTTP server (Python
 ```yaml
 # .github/workflows/ci.yml — runs on push to main/dev and all PRs
 jobs:
-  frontend:          # pnpm install → typecheck → lint → vitest (48 tests: 16 API + 25 components + 7 infra)
+  frontend:          # pnpm install → typecheck → lint → vitest (65 tests: 33 API + 25 components + 7 infra)
   pipeline:          # pip install → pytest scrapers + embed server + daily cap (24 unit tests, no API keys)
   pipeline-accuracy: # pytest categorizer accuracy (main branch only, requires API keys — 3 tests)
   docker:            # docker build validation (no push)
@@ -351,7 +361,7 @@ jobs:
 |-------|------|----------|
 | Type safety | `tsc --noEmit` | Zero errors |
 | Linting | ESLint 9 | Zero warnings |
-| Frontend tests | vitest | 48 tests (16 API routes + 25 React components + 7 infrastructure) |
+| Frontend tests | vitest | 65 tests (33 API routes + 25 React components + 7 infrastructure) |
 | Scraper + embed + daily cap tests | pytest | 24 tests (RSS, HN, Arxiv, embed server, daily token cap) |
 | E2E tests | Playwright | 7 tests (navigation flows) |
 | Noise filter accuracy | pytest | 3 tests, ≥95% pass rate (main branch only, requires API keys) |

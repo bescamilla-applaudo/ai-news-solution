@@ -201,6 +201,8 @@ cp .env.local.example .env.local
 | `NEXT_PUBLIC_SUPABASE_URL` | Sí | URL de Supabase local (`http://127.0.0.1:54321`) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Sí | Acceso server-side a la DB (del output de `supabase start`) |
 | `WORKER_EMBED_URL` | No | URL del embed server (default: `http://localhost:8001`) |
+| `NEXT_PUBLIC_SENTRY_DSN` | No | Sentry DSN para error tracking del frontend |
+| `NEXT_PUBLIC_APP_URL` | No | URL base de la app |
 
 ### `worker/.env` (Pipeline — Python)
 
@@ -218,6 +220,9 @@ cp worker/.env.example worker/.env
 | `DAILY_TOKEN_CAP` | No | Límite diario de tokens LLM (default: `400000`, `0` = sin límite) |
 | `RESEND_API_KEY` | No | Solo para el digest semanal por email |
 | `HMAC_SECRET` | No | Clave HMAC-SHA256 para tokens de unsubscribe (weekly brief) |
+| `SENTRY_WORKER_DSN` | No | Sentry DSN para error tracking del worker |
+| `LOG_FORMAT` | No | `json` (producción) o `dev` (consola coloreada). Default: `dev` |
+| `LOG_LEVEL` | No | Nivel de log Python. Default: `INFO` |
 | `APP_URL` | No | URL base de la app para links de unsubscribe (default: `http://localhost:3000`) |
 
 ---
@@ -254,7 +259,7 @@ pnpm typecheck
 # Linting
 pnpm lint
 
-# Tests del frontend (vitest — 38 tests: 13 API routes + 25 componentes React)
+# Tests del frontend (vitest — 65 tests: 33 API routes + 25 componentes React + 7 infraestructura)
 pnpm test
 
 # Tests E2E (Playwright — requiere app corriendo)

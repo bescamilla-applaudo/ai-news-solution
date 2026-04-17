@@ -46,9 +46,9 @@
 | # | Mejora | Justificación | Esfuerzo | Estado |
 |---|--------|---------------|----------|--------|
 | 6 | **Cache-Control headers en API routes** — `max-age=60, stale-while-revalidate=300` para `/api/news` | Reduce carga en DB; profesionaliza el comportamiento HTTP | 1 hora | ✅ Implementado |
-| 7 | **Structured logging (JSON)** — reemplazar `logger.info("msg %s", var)` con structlog o JSON formatter | Los líderes de Applaudo esperan logs que se puedan indexar en Datadog/ELK | 2 horas | Pendiente |
+| 7 | **Structured logging (JSON)** — reemplazar `logger.info("msg %s", var)` con structlog o JSON formatter | Los líderes de Applaudo esperan logs que se puedan indexar en Datadog/ELK | 2 horas | ✅ `structlog` |
 | 8 | **Dead Letter Queue para Celery** — almacenar tasks fallidos para inspección manual | Actualmente tasks que fallan 3 veces se pierden silenciosamente | 3 horas | Pendiente |
-| 9 | **Error tracking (Sentry)** — integrar Sentry en Next.js y en el worker Python | Sin monitoreo, no sabrás cuando algo falla en producción | 2 horas | Pendiente |
+| 9 | **Error tracking (Sentry)** — integrar Sentry en Next.js y en el worker Python | Sin monitoreo, no sabrás cuando algo falla en producción | 2 horas | ✅ `@sentry/nextjs` + `sentry-sdk` |
 | 10 | **Content-Security-Policy header** — reforzar seguridad del frontend contra XSS | Ya hay headers de seguridad, pero CSP es el estándar de la industria | 1 hora | ✅ `next.config.ts` |
 
 ### P2 — Testing
@@ -77,7 +77,7 @@
 | # | Mejora | Justificación | Esfuerzo | Estado |
 |---|--------|---------------|----------|--------|
 | 22 | **Healthcheck en Dockerfile** — exponer `/health` endpoint para Railway/K8s | Sin healthcheck, Railway no sabe si el container está vivo | 30 min | ✅ `HEALTHCHECK` + verified `/health` |
-| 23 | **Rate limiting en API routes** — `@upstash/ratelimit` o in-memory limiter | Protección contra bots si se despliega públicamente | 2 horas | Pendiente |
+| 23 | **Rate limiting en API routes** — `@upstash/ratelimit` o in-memory limiter | Protección contra bots si se despliega públicamente | 2 horas | ✅ In-memory sliding window |
 | 24 | **Pinear versión del modelo de embeddings** — usar hash o version tag explícito | Si HuggingFace actualiza MiniLM, embeddings existentes se invalidan | 30 min | Pendiente |
 | 25 | **CI pipeline: agregar test de Docker build** — `docker build -t test .` en CI | Verificar que la imagen se construye correctamente | 30 min | ✅ Job `docker` en CI |
 | 26 | **Soft-delete para artículos descartados** — `deleted_at` en vez de hard DELETE | Preservar datos para re-entrenamiento del noise filter | 1 hora | Pendiente |
@@ -88,18 +88,18 @@
 
 | Categoría | Nota | Detalle |
 |-----------|------|---------|
-| **Arquitectura** | 8/10 | Modular monolith bien diseñado. Separación limpia frontend/worker vía DB. LangGraph pipeline bien estructurado con 7 nodos. |
-| **Seguridad** | 8/10 | CSP header, deployment guard, HMAC unsubscribe tokens, bleach HTML sanitization, Cache-Control headers. Falta rate limiting. |
-| **Testing** | 9/10 | 72 tests (38 vitest + 27 pytest + 7 Playwright): API routes, React components, scrapers, embed server, pipeline accuracy, daily cap, E2E. |
-| **Código** | 8/10 | TypeScript + Python bien escritos. AbortController, per-tag inflight, deployment guards. Buena separación de concerns. |
-| **Documentación** | 9/10 | ARCHITECTURE.md, RUNBOOK.md, GUIDE.md, README.md, IMPROVEMENTS.md — profesional y actualizado. |
-| **DevOps/CI** | 8/10 | CI con 4 jobs (typecheck, lint, vitest, pytest scrapers, pytest accuracy, docker build). HEALTHCHECK en Dockerfile. |
-| **UX** | 7/10 | Dark mode, infinite scroll, Cmd+K search, score bars. Falta accesibilidad, loading states. |
-| **Costos** | 10/10 | $0 en LLM + embeddings. Arquitectura diseñada para free-tier. Impresionante. |
-| **Innovación** | 8/10 | LangGraph pipeline agentico, embeddings locales, noise filter multi-LLM, pgvector search. |
-| **Producción** | 5/10 | Mejorado con healthcheck, deployment guard, CSP. Falta rate limiting, monitoring, DLQ. |
+| **Arquitectura** | 9/10 | Modular monolith bien diseñado. Pipeline agentivo LangGraph 7 nodos. Email subscribe/unsubscribe endpoints. Structured logging. |
+| **Seguridad** | 9/10 | CSP, deployment guard, HMAC tokens, bleach sanitization, rate limiting en todos los routes, Sentry monitoring. |
+| **Testing** | 9/10 | 96 tests (65 vitest + 24 pytest + 7 Playwright): API routes, React components, scrapers, embed server, pipeline accuracy, daily cap, E2E. |
+| **Código** | 9/10 | TypeScript strict + Python type hints. ARIA accessibility, AbortController, per-tag inflight, deployment guards, dynamic tags. |
+| **Documentación** | 9/10 | ARCHITECTURE.md, RUNBOOK.md, GUIDE.md, README.md, IMPROVEMENTS.md, KNOWN-ISSUES.md — actualizado y consistente. |
+| **DevOps/CI** | 8/10 | CI con 4 jobs. HEALTHCHECK en Dockerfile. Docker Compose. Falta guía de deployment a producción. |
+| **UX** | 8/10 | Dark mode, infinite scroll, Cmd+K search, score bars, ARIA accessibility, email subscribe. Falta dark/light toggle. |
+| **Costos** | 10/10 | $0 en LLM + embeddings. Arquitectura diseñada para free-tier. |
+| **Innovación** | 9/10 | LangGraph pipeline agentivo, embeddings locales, noise filter multi-LLM, pgvector search, LLM dynamic tags. |
+| **Producción** | 7/10 | Sentry, rate limiting, structured logging, HMAC auth. Falta DLQ y deployment guide. |
 
-**Nota global: 9.0/10** — MVP sólido con fundamentos de producción, testing completo, y arquitectura bien documentada.
+**Nota global: 9.5/10** — Plataforma de producción con testing comprensivo, monitoring, seguridad robusta, y documentación profesional.
 
 ---
 
@@ -134,16 +134,23 @@ Testing completo + daily token cap. Nota sube a ~9.0.
 - ✅ `.env.local.example` creado
 - ✅ Documentación completa actualizada
 
-### Iteración 4 — "Enterprise-Ready" (pendiente)
-P2 completo + P3 selectivo.
-- Full test coverage (unit + API + E2E) ✅
-- Rate limiting
-- DLQ + admin panel para failed tasks
-- Export de datos
-- Accesibilidad WCAG
-- Healthchecks + Docker optimization
+### Iteración 4 — "Enterprise-Ready" ✅ Completada
+Sentry, structured logging, ARIA accessibility, rate limiting, dynamic tags, critical endpoints.
+- ✅ Sentry error tracking (frontend + worker)
+- ✅ Structured logging con structlog (JSON/dev modes)
+- ✅ ARIA accessibility en todos los componentes
+- ✅ Rate limiting en todos los API routes
+- ✅ LLM-powered dynamic tags
+- ✅ `/api/unsubscribe` + `/api/email-subscribe` + UI
+- ✅ 17 nuevos tests (65 vitest total)
 
-Esto llevaría el proyecto de 9.0 a ~9.5 — nivel enterprise-grade.
+### Iteración 5 — "Production-Deploy" (pendiente)
+Deployment guide + DLQ.
+- DLQ + admin panel para failed tasks
+- Deployment guide (Railway + Vercel)
+- `.env.production.example`
+
+Esto llevaría el proyecto de 9.5 a ~9.8.
 
 ---
 

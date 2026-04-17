@@ -720,7 +720,10 @@ ai-news-solution/
 │   ├── api/                      # Tests de API routes
 │   │   ├── search.test.ts        # 4 tests: queries, 503
 │   │   ├── news.test.ts          # 3 tests: paginación, caching
-│   │   └── watchlist.test.ts     # 6 tests: CRUD, validación
+│   │   ├── watchlist.test.ts     # 6 tests: CRUD, validación
+│   │   ├── tags.test.ts          # 3 tests: lista, caching
+│   │   ├── unsubscribe.test.ts   # 7 tests: HMAC, validation
+│   │   └── email-subscribe.test.ts # 10 tests: subscribe, validation
 │   ├── components/               # Tests de componentes React
 │   │   ├── article-card.test.tsx # 10 tests: render, score bars, minimal
 │   │   ├── watchlist-manager.test.tsx # 8 tests: toggle, rollback, inflight
@@ -728,7 +731,7 @@ ai-news-solution/
 │   └── setup.ts                  # Testing Library + jest-dom + cleanup
 │
 ├── e2e/                          # Tests E2E (Playwright)
-│   └── navigation.spec.ts       # 5 tests: home, search, article, watchlist
+│   └── navigation.spec.ts       # 7 tests: home, search, article, watchlist
 │
 ├── worker/                       # Pipeline Python
 │   ├── main.py                   # Entry point: APScheduler + Celery startup
@@ -777,7 +780,7 @@ ai-news-solution/
 
 ## 15. Testing y calidad
 
-El proyecto tiene **72 tests automatizados** distribuidos en 3 capas: unit tests de componentes y API (vitest), unit tests de pipeline y scrapers (pytest), y tests E2E (Playwright).
+El proyecto tiene **96 tests automatizados** distribuidos en 3 capas: unit tests de componentes y API (vitest), unit tests de pipeline y scrapers (pytest), y tests E2E (Playwright).
 
 ### Tests del pipeline — Accuracy (Python, requiere API key)
 
@@ -847,6 +850,9 @@ pytest tests/ -v --ignore=tests/pipeline/test_categorizer.py  # 24 tests, sin AP
 | `search.test.ts` | 4 | Query vacío, query corto, query >200 chars → 400, embed down → 503 |
 | `news.test.ts` | 3 | Metadata de paginación, header Cache-Control, page negativo clamped |
 | `watchlist.test.ts` | 6 | GET retorna data + no-store, POST/DELETE sin tag_id → 400, tipo inválido, JSON inválido |
+| `tags.test.ts` | 3 | Lista de tags, Cache-Control |
+| `unsubscribe.test.ts` | 7 | HMAC validación, token inválido → 403, parámetros faltantes, HTML response |
+| `email-subscribe.test.ts` | 10 | Email validación, upsert, JSON inválido, status GET |
 
 ### Tests E2E (Playwright)
 
@@ -858,7 +864,7 @@ pytest tests/ -v --ignore=tests/pipeline/test_categorizer.py  # 24 tests, sin AP
 
 **Ejecución:**
 ```bash
-pnpm test           # 38 tests vitest (13 API + 25 componentes)
+pnpm test           # 65 tests vitest (33 API + 25 componentes + 7 infra)
 pnpm test:e2e       # 7 tests Playwright (requiere app corriendo)
 pnpm test:e2e:ui    # Playwright en modo UI interactivo
 ```
@@ -868,13 +874,14 @@ pnpm test:e2e:ui    # Playwright en modo UI interactivo
 | Capa | Herramienta | Tests | Cubre |
 |------|-------------|-------|-------|
 | Componentes React | vitest + Testing Library | 25 | ArticleCard, WatchlistManager, NewsFeed |
-| API routes | vitest | 13 | search, news, watchlist |
+| API routes | vitest | 33 | search, news, watchlist, tags, unsubscribe, email-subscribe |
+| Infraestructura | vitest | 7 | Rate limiter sliding window, IP extraction |
 | Scrapers | pytest | 14 | RSS, HN, Arxiv parsing y sanitización |
 | Embed server | pytest | 5 | Health, embedding, errores |
 | Pipeline accuracy | pytest | 3 | Noise filter ≥95% (requiere API key) |
 | Daily token cap | pytest | 5 | Cap enforcement, null handling |
 | E2E navegación | Playwright | 7 | Flujos de navegación completos |
-| **Total** | | **72** | |
+| **Total** | | **96** | |
 
 ### Calidad del frontend
 
@@ -882,7 +889,7 @@ pnpm test:e2e:ui    # Playwright en modo UI interactivo
 |-------|-------------|---------|--------|
 | Type safety | `tsc --noEmit` | `pnpm typecheck` | 0 errores |
 | Linting | ESLint 9 | `pnpm lint` | 0 warnings |
-| Unit + component tests | vitest | `pnpm test` | 38 tests pasando |
+| Unit + component tests | vitest | `pnpm test` | 65 tests pasando |
 | E2E tests | Playwright | `pnpm test:e2e` | 7 tests pasando |
 
 ### CI/CD (GitHub Actions)
@@ -890,7 +897,7 @@ pnpm test:e2e:ui    # Playwright en modo UI interactivo
 ```yaml
 # .github/workflows/ci.yml — 4 jobs
 jobs:
-  frontend:           # pnpm install → typecheck → lint → vitest (38 tests)
+  frontend:           # pnpm install → typecheck → lint → vitest (65 tests)
   pipeline:           # pip install → pytest scrapers + embed server + daily cap (24 tests)
   pipeline-accuracy:  # Solo en main → pytest pipeline accuracy (3 tests, requiere OPENROUTER_API_KEY)
   docker:             # docker build → verificar que la imagen se construye

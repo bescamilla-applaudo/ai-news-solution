@@ -1,10 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { requireSupabase } from '@/lib/guards'
+import { checkRateLimit, getClientIP } from '@/lib/rate-limit'
 
 export async function GET(request: NextRequest) {
   const guard = requireSupabase()
   if (guard) return guard
+
+  // Rate limit: 10 searches per minute (embed server is expensive)
+  const ip = getClientIP(request.headers)
+  const rl = checkRateLimit(`search:${ip}`, { max: 10, windowMs: 60_000 })
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: 'Too many requests' },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(Math.ceil(rl.retryAfterMs / 1000)) },
+      }
+    )
+  }
 
   const query = new URL(request.url).searchParams.get('q')?.trim()
   if (!query || query.length < 2) {

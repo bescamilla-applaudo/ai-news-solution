@@ -15,7 +15,7 @@ Single-user, zero-cost AI news aggregation platform. Filters technical AI conten
 | LLM | OpenRouter (free-tier models via ModelPool) | — |
 | Embeddings | Local sentence-transformers (all-MiniLM-L6-v2, 384 dims) | — |
 | Worker | Python 3.11, Celery + Redis, APScheduler | — |
-| Testing | Vitest (38), Pytest (27), Playwright E2E (7) = 72 total | — |
+| Testing | Vitest (48), Pytest (27), Playwright E2E (7) = 82 total | — |
 
 ## Branching — Git-Flow
 
@@ -101,7 +101,7 @@ Before implementing features, read:
 ## CI/CD
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on push to `main`/`develop` and PRs to `main`:
-- **frontend**: typecheck → lint → vitest (38 tests)
+- **frontend**: typecheck → lint → vitest (48 tests)
 - **pipeline**: pytest scrapers + embed server + daily cap (24 tests)
 - **pipeline-accuracy**: categorizer accuracy tests (3 tests, main only, requires API keys)
 - **docker**: validates worker Dockerfile builds

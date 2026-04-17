@@ -1,12 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { ArticleCard } from '@/components/article-card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { NewsItemWithTags } from '@/lib/database.types'
 
-const ALL_TAGS = [
+const FALLBACK_TAGS = [
   'Multi-Agent', 'LLM-Release', 'RAG', 'Dev-Tools',
   'Research', 'Methodologies', 'LangGraph', 'Claude', 'Agents', 'Embeddings',
 ]
@@ -23,6 +23,19 @@ async function fetchNews({ pageParam = 0, tag }: { pageParam?: number; tag: stri
 
 export function NewsFeed() {
   const [activeTag, setActiveTag] = useState<string | null>(null)
+
+  const { data: tagsData } = useQuery({
+    queryKey: ['tags'],
+    queryFn: async () => {
+      const res = await fetch('/api/tags')
+      if (!res.ok) return { data: [] }
+      return res.json()
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  })
+  const tags: string[] = tagsData?.data?.length
+    ? tagsData.data.map((t: { name: string }) => t.name)
+    : FALLBACK_TAGS
 
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, isError } =
     useInfiniteQuery({
@@ -67,7 +80,7 @@ export function NewsFeed() {
         >
           All
         </button>
-        {ALL_TAGS.map((tag) => (
+        {tags.map((tag) => (
           <button
             key={tag}
             onClick={() => setActiveTag(tag === activeTag ? null : tag)}
@@ -118,11 +131,18 @@ export function NewsFeed() {
         </div>
       )}
 
-      {!isLoading && !hasNextPage && articles.length > 0 && (
-        <p className="text-xs text-zinc-600 text-center py-6">
-          All caught up
-        </p>
-      )}
+      {!isLoading && !hasNextPage && articles.length > 0 && (() => {
+        const total = data?.pages[0]?.meta?.total ?? articles.length
+        const pagesLoaded = data?.pages.length ?? 0
+        const capped = pagesLoaded >= MAX_PAGES && total > articles.length
+        return (
+          <p className="text-xs text-zinc-600 text-center py-6">
+            {capped
+              ? `Showing ${articles.length} of ${total} articles`
+              : 'All caught up'}
+          </p>
+        )
+      })()}
     </div>
   )
 }

@@ -1,8 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import { requireSupabase } from '@/lib/guards'
+import { checkRateLimit, getClientIP } from '@/lib/rate-limit'
 
 const OWNER_ID = 'owner'
+
+// Rate limit helper for watchlist routes
+function rateLimitWatchlist(request: NextRequest): NextResponse | null {
+  const ip = getClientIP(request.headers)
+  const rl = checkRateLimit(`watchlist:${ip}`, { max: 30, windowMs: 60_000 })
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: 'Too many requests' },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(Math.ceil(rl.retryAfterMs / 1000)) },
+      }
+    )
+  }
+  return null
+}
 
 // GET /api/watchlist — returns the list of watched tags
 export async function GET() {
@@ -26,6 +43,9 @@ export async function GET() {
 
 // POST /api/watchlist — add a tag to the watchlist
 export async function POST(request: NextRequest) {
+  const rlBlock = rateLimitWatchlist(request)
+  if (rlBlock) return rlBlock
+
   const guard = requireSupabase()
   if (guard) return guard
 
@@ -69,6 +89,9 @@ export async function POST(request: NextRequest) {
 
 // DELETE /api/watchlist — remove a tag from the watchlist
 export async function DELETE(request: NextRequest) {
+  const rlBlock = rateLimitWatchlist(request)
+  if (rlBlock) return rlBlock
+
   const guard = requireSupabase()
   if (guard) return guard
 

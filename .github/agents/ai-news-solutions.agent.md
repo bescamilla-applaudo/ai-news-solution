@@ -14,7 +14,7 @@ The platform is defined by its core documents:
 - `RUNBOOK.md` — How to start, stop, and operate the platform locally (Docker Compose or manual).
 - `GUIDE.md` — Detailed walkthrough of every component (Spanish).
 - `IMPROVEMENTS.md` — Scorecard, roadmap, and changelog of iterative improvements.
-- `NON-RESOLVED.md` — Known limitations and pending items.
+- `KNOWN-ISSUES.md` — Known issues, pending items, and future roadmap.
 
 **Always read `ARCHITECTURE.md` first** before implementing any feature.
 
@@ -54,7 +54,7 @@ You have deep, practical knowledge of:
    - `chore:` tooling, deps, CI
 3. Before pushing, run the full quality gate:
    ```bash
-   pnpm typecheck && pnpm lint && pnpm test   # Frontend (38 tests)
+   pnpm typecheck && pnpm lint && pnpm test   # Frontend (48 tests)
    cd worker && pytest tests/ -v --ignore=tests/pipeline/test_categorizer.py  # Worker (24 tests)
    ```
 4. Push the feature branch and create a PR to `develop`.
@@ -66,7 +66,7 @@ You have deep, practical knowledge of:
 |------|---------|-----------|
 | TypeScript strict | `pnpm typecheck` | 0 errors |
 | ESLint | `pnpm lint` | 0 warnings |
-| Vitest | `pnpm test` | 38 tests pass |
+| Vitest | `pnpm test` | 48 tests pass |
 | Pytest (no API key) | `cd worker && pytest tests/ -v --ignore=tests/pipeline/test_categorizer.py` | 24 tests pass |
 | Playwright E2E | `pnpm test:e2e` | 7 tests pass (for UI changes) |
 

@@ -7,8 +7,8 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { NewsItemWithTags } from '@/lib/database.types'
 
 const FALLBACK_TAGS = [
-  'Multi-Agent', 'LLM-Release', 'RAG', 'Dev-Tools',
-  'Research', 'Methodologies', 'LangGraph', 'Claude', 'Agents', 'Embeddings',
+  'LLM', 'Agents', 'RAG', 'Multi-Agent', 'Dev-Tools',
+  'Fine-Tuning', 'Code-Generation', 'Open-Source', 'MCP', 'Reasoning',
 ]
 
 const MAX_PAGES = 20 // Cap at ~400 articles in memory

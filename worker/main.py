@@ -32,6 +32,17 @@ from dotenv import load_dotenv
 
 load_dotenv()  # Must be first so env vars are available to all imports
 
+# Initialize Sentry for error tracking (no-op if SENTRY_WORKER_DSN not set)
+import sentry_sdk  # noqa: E402
+
+if os.environ.get("SENTRY_WORKER_DSN"):
+    sentry_sdk.init(
+        dsn=os.environ["SENTRY_WORKER_DSN"],
+        traces_sample_rate=0.1,
+        environment=os.environ.get("ENVIRONMENT", "development"),
+        send_default_pii=False,
+    )
+
 from worker.celery_app import app as celery_app  # noqa: E402
 from worker.db import get_supabase  # noqa: E402
 from worker.scrapers.arxiv import scrape_arxiv  # noqa: E402

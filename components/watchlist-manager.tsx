@@ -64,14 +64,14 @@ export function WatchlistManager({ allTags, watchedTagIds: initial }: WatchlistM
   }
 
   return (
-    <div>
+    <div role="region" aria-label="Watchlist tag management">
       <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-3">
         Watched Tags
       </h2>
       {error && (
-        <p className="text-xs text-red-400 mb-2">{error}</p>
+        <p className="text-xs text-red-400 mb-2" role="alert">{error}</p>
       )}
-      <div className="space-y-1.5">
+      <div className="space-y-1.5" role="group" aria-label="Available tags">
         {allTags.map((tag) => {
           const active = watched.has(tag.id)
           const busy = inflight.has(tag.id)
@@ -80,6 +80,8 @@ export function WatchlistManager({ allTags, watchedTagIds: initial }: WatchlistM
               key={tag.id}
               onClick={() => toggle(tag)}
               disabled={busy}
+              aria-pressed={active}
+              aria-label={`${active ? 'Remove' : 'Add'} ${tag.name} ${active ? 'from' : 'to'} watchlist`}
               className={`w-full flex items-center justify-between px-3 py-2 rounded-lg border text-xs transition-colors ${
                 active
                   ? 'bg-zinc-100 text-zinc-900 border-zinc-100'
@@ -94,7 +96,7 @@ export function WatchlistManager({ allTags, watchedTagIds: initial }: WatchlistM
           )
         })}
       </div>
-      <p className="text-[11px] text-zinc-600 mt-3">
+      <p className="text-[11px] text-zinc-600 mt-3" aria-live="polite">
         {watched.size} tag{watched.size !== 1 ? 's' : ''} watched
       </p>
     </div>

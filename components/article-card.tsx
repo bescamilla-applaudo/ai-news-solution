@@ -24,7 +24,14 @@ function ScoreBar({ score, label }: { score: number | null; label: string }) {
   return (
     <div className="flex items-center gap-2 text-xs text-zinc-400">
       <span className="w-14 shrink-0">{label}</span>
-      <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+      <div
+        className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden"
+        role="progressbar"
+        aria-label={`${label} score`}
+        aria-valuenow={score}
+        aria-valuemin={0}
+        aria-valuemax={10}
+      >
         <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
       </div>
       <span className="w-4 text-right font-mono">{score}</span>
@@ -53,7 +60,7 @@ export function ArticleCard({ article, minimal = false }: ArticleCardProps) {
   const sourceBg = sourceBadgeColor[article.source_name] ?? 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
 
   return (
-    <Card className="bg-zinc-900 border-zinc-800 hover:border-zinc-700 transition-colors">
+    <Card className="bg-zinc-900 border-zinc-800 hover:border-zinc-700 transition-colors" role="article" aria-label={article.title}>
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-3">
           <Link
@@ -67,7 +74,10 @@ export function ArticleCard({ article, minimal = false }: ArticleCardProps) {
           </span>
         </div>
         <div className="flex items-center gap-2 flex-wrap mt-1">
-          <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium uppercase tracking-wide ${sourceBg}`}>
+          <span
+            className={`text-[10px] px-1.5 py-0.5 rounded border font-medium uppercase tracking-wide ${sourceBg}`}
+            aria-label={`Source: ${article.source_name}`}
+          >
             {article.source_name}
           </span>
           {tags.map((tag) => (

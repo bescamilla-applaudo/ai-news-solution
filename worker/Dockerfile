@@ -13,8 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
 
-# Copy worker source
-COPY . .
+# Copy worker source into worker/ subdirectory to preserve the Python package structure.
+# The build context is ./worker, so COPY . ./worker/ re-creates the worker package inside /app/.
+COPY . ./worker/
 
 # Run as non-root user for security
 RUN useradd --create-home --shell /bin/bash --uid 1000 worker

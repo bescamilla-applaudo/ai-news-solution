@@ -13,7 +13,8 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 
 # Run as non-root
-RUN useradd --create-home --shell /bin/bash --uid 1001 nextjs
+RUN useradd --create-home --shell /bin/bash --uid 1001 nextjs \
+  && mkdir -p /app/.next && chown -R nextjs:nextjs /app/.next
 USER nextjs
 
 EXPOSE 3000

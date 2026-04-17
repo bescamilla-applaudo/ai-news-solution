@@ -1,0 +1,16 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Environment
+.env
+.env.*
+
+# Tests (not needed in container)
+tests/
+
+# IDE
+.vscode/

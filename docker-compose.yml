@@ -46,7 +46,7 @@ services:
     build:
       context: ./worker
       dockerfile: Dockerfile
-    command: python embed_server.py
+    command: python worker/embed_server.py
     restart: unless-stopped
     ports:
       - "127.0.0.1:8001:8001"

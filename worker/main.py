@@ -53,10 +53,9 @@ from worker.tasks.process_article import process_article  # noqa: E402
 from worker.tasks.weekly_brief import send_weekly_brief  # noqa: E402
 from worker.tasks.cleanup_db import cleanup_db  # noqa: E402
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(name)s %(levelname)s %(message)s",
-)
+from worker.logging_config import setup_logging  # noqa: E402
+
+setup_logging()
 logger = logging.getLogger(__name__)
 
 

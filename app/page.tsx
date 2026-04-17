@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { CommandPalette } from '@/components/command-palette'
+import { EmailSubscribe } from '@/components/email-subscribe'
 import { NewsFeed } from '@/components/news-feed'
 
 export default function HomePage() {
@@ -35,6 +36,9 @@ export default function HomePage() {
             <p className="text-sm text-zinc-500 mt-0.5">
               LLM releases, multi-agent architectures, and developer tooling — filtered for signal.
             </p>
+            <div className="mt-2">
+              <EmailSubscribe />
+            </div>
           </div>
           <NewsFeed />
         </main>

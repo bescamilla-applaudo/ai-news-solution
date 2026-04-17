@@ -222,4 +222,4 @@ Esto llevaría el proyecto de 9.0 a ~9.5 — nivel enterprise-grade.
 
 **Documentación:**
 - Reescrito: `README.md` (professional, comprehensive setup guide)
-- Actualizados: `ARCHITECTURE.md`, `RUNBOOK.md`, `IMPROVEMENTS.md`, `NON-RESOLVED.md`, `GUIDE.md`
+- Actualizados: `ARCHITECTURE.md`, `RUNBOOK.md`, `IMPROVEMENTS.md`, `KNOWN-ISSUES.md`, `GUIDE.md`

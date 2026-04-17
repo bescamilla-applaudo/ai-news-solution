@@ -46,7 +46,7 @@ RSS/API Sources → Scraper (APScheduler) → Celery Queue → LangGraph Pipelin
 | Embeddings | sentence-transformers/all-MiniLM-L6-v2 — **local, $0** |
 | Database | Supabase (PostgreSQL 15 + pgvector) |
 | Queue | Redis 7 (Docker) |
-| Testing | Vitest + Testing Library (38 tests) · Pytest (27 tests) · Playwright E2E (7 tests) |
+| Testing | Vitest + Testing Library (48 tests) · Pytest (27 tests) · Playwright E2E (7 tests) |
 | CI/CD | GitHub Actions (4 jobs) |
 
 ---
@@ -203,10 +203,10 @@ e2e/                          # End-to-end tests (Playwright)
 
 ## Testing
 
-The project has **72 automated tests** across three layers:
+The project has **82 automated tests** across three layers:
 
 ```bash
-# Frontend — 38 tests (API routes + React components)
+# Frontend — 48 tests (API routes + components + infrastructure)
 pnpm test
 
 # Worker — 27 tests (scrapers, embed server, pipeline, daily cap)
@@ -219,8 +219,9 @@ pnpm test:e2e
 
 | Suite | Tests | What it covers |
 |-------|-------|---------------|
-| Vitest — API routes | 13 | `/api/news`, `/api/search`, `/api/watchlist` responses and edge cases |
+| Vitest — API routes | 16 | `/api/news`, `/api/search`, `/api/watchlist`, `/api/tags` responses and edge cases |
 | Vitest — Components | 25 | `ArticleCard` (10), `WatchlistManager` (8), `NewsFeed` (7) — render, interaction, error states |
+| Vitest — Infrastructure | 7 | Rate limiter sliding window, IP extraction, key isolation |
 | Pytest — Scrapers | 14 | RSS parsing, HTML sanitization, HTTP error handling, Arxiv/HN mocks |
 | Pytest — Embed server | 5 | Health endpoint, embedding generation, error cases |
 | Pytest — Pipeline | 3 | Categorizer noise filter accuracy (≥95% on 20 fixtures) |
@@ -250,7 +251,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full technical design:
 | [GUIDE.md](GUIDE.md) | Comprehensive technical guide (17 sections) for presentations |
 | [RUNBOOK.md](RUNBOOK.md) | Step-by-step startup/shutdown instructions |
 | [IMPROVEMENTS.md](IMPROVEMENTS.md) | Bug fixes, improvement backlog, and scorecard |
-| [NON-RESOLVED.md](NON-RESOLVED.md) | Remaining items and future roadmap |
+| [KNOWN-ISSUES.md](KNOWN-ISSUES.md) | Known issues, pending items, and future roadmap |
 
 ---
 

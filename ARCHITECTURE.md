@@ -339,7 +339,7 @@ The embed server (`worker/embed_server.py`) is a lightweight HTTP server (Python
 ```yaml
 # .github/workflows/ci.yml — runs on push to main/dev and all PRs
 jobs:
-  frontend:          # pnpm install → typecheck → lint → vitest (38 tests: 13 API + 25 components)
+  frontend:          # pnpm install → typecheck → lint → vitest (48 tests: 16 API + 25 components + 7 infra)
   pipeline:          # pip install → pytest scrapers + embed server + daily cap (24 unit tests, no API keys)
   pipeline-accuracy: # pytest categorizer accuracy (main branch only, requires API keys — 3 tests)
   docker:            # docker build validation (no push)
@@ -351,7 +351,7 @@ jobs:
 |-------|------|----------|
 | Type safety | `tsc --noEmit` | Zero errors |
 | Linting | ESLint 9 | Zero warnings |
-| Frontend tests | vitest | 38 tests (13 API routes + 25 React components) |
+| Frontend tests | vitest | 48 tests (16 API routes + 25 React components + 7 infrastructure) |
 | Scraper + embed + daily cap tests | pytest | 24 tests (RSS, HN, Arxiv, embed server, daily token cap) |
 | E2E tests | Playwright | 7 tests (navigation flows) |
 | Noise filter accuracy | pytest | 3 tests, ≥95% pass rate (main branch only, requires API keys) |

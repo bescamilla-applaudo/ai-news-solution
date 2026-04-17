@@ -1,4 +1,4 @@
-# NON-RESOLVED.md — Pendientes para 100% de implementación
+# KNOWN-ISSUES.md — Pendientes para 100% de implementación
 
 > Auditoría completa del proyecto AI News Intelligence Platform.
 > Fecha: 16 de abril de 2026 · Estado actual: **~90% completo**
@@ -78,37 +78,27 @@ Los tasks de Celery que fallan después de 3 reintentos se pierden silenciosamen
 
 ---
 
-### 6. Rate limiting en API routes — NO EXISTE
+### 6. ~~Rate limiting en API routes — NO EXISTE~~ ✅ RESUELTO
 
-**Archivos afectados:** Todas las rutas en `app/api/`
+**Estado:** Implementado — rate limiter in-memory con sliding window en `lib/rate-limit.ts`.
 
-No hay rate limiting en ningún endpoint. Si se despliega públicamente, vulnerable a abuso y brute-force.
-
-**Qué implementar:**
-- `@upstash/ratelimit` o rate limiter in-memory.
-- Proteger especialmente `/api/search` (consume embeddings) y `/api/watchlist`.
-- Retornar 429 + header `Retry-After`.
-
-**Esfuerzo estimado:** 2 horas.
+- `/api/search`: 10 req/min (consume embeddings)
+- `/api/news`: 60 req/min (feed browsing)
+- `/api/watchlist`: 30 req/min (POST/DELETE)
+- `/api/tags`: 30 req/min
+- Retorna 429 + header `Retry-After` cuando se excede
+- 7 tests en `__tests__/lib/rate-limit.test.ts`
 
 ---
 
-### 7. Tags dinámicos via API — HARDCODEADOS
+### 7. ~~Tags dinámicos via API — HARDCODEADOS~~ ✅ RESUELTO
 
-**Archivo afectado:** `components/news-feed.tsx` líneas 9-11
+**Estado:** Implementado — `GET /api/tags` consulta `tech_tags` ordenados por nombre.
 
-Los tags del filtro están hardcodeados en el frontend:
-```tsx
-const ALL_TAGS = ["LLM-Release","Agents","RAG","Embeddings","Dev-Tools","Multi-Agent","Research","Claude","LangGraph"]
-```
-
-Si se agregan nuevos tags en la base de datos, no aparecen en el filtro.
-
-**Qué implementar:**
-- `GET /api/tags` — consulta `SELECT DISTINCT name FROM tech_tags ORDER BY name`.
-- `NewsFeed` consume este endpoint en vez del array hardcodeado.
-
-**Esfuerzo estimado:** 1 hora.
+- `NewsFeed` consume `/api/tags` con React Query (staleTime: 5 min)
+- Fallback a array hardcodeado si el API falla
+- Cache-Control: 5 min server-side
+- 3 tests en `__tests__/api/tags.test.ts`
 
 ---
 
@@ -217,11 +207,9 @@ No hay forma de exportar artículos a JSON o CSV. Mencionado en `IMPROVEMENTS.md
 
 ---
 
-### 18. Indicador de truncamiento en infinite scroll
+### 18. ~~Indicador de truncamiento en infinite scroll~~ ✅ RESUELTO
 
-`NewsFeed` tiene `MAX_PAGES=20` (~400 artículos). Cuando se alcanza el límite, no se muestra ningún mensaje al usuario ("Mostrando 400 de 1024").
-
-**Esfuerzo estimado:** 30 minutos.
+**Estado:** Implementado — cuando el scroll alcanza el límite de MAX_PAGES (20 páginas, ~400 artículos), muestra "Showing X of Y articles" en vez de "All caught up".
 
 ---
 
@@ -238,9 +226,9 @@ La app usa un modelo single-user con `OWNER_ID='owner'` hardcodeado. Los directo
 | Prioridad | Items | Resueltos | Pendientes | Esfuerzo restante |
 |-----------|-------|-----------|------------|-------------------|
 | 🔴 Críticos | 3 | 0 | 3 | ~5 horas |
-| 🟡 Importantes | 8 | 3 | 5 | ~10 horas |
-| 🟢 Deseables | 8 | 0 | 8 | ~10 horas |
-| **Total** | **19 items** | **3 resueltos** | **16 pendientes** | **~25 horas** |
+| 🟡 Importantes | 8 | 6 | 2 | ~5 horas |
+| 🟢 Deseables | 8 | 1 | 7 | ~9.5 horas |
+| **Total** | **19 items** | **7 resueltos** | **12 pendientes** | **~19.5 horas** |
 
 ### Lo que SÍ funciona (implementado al 100%)
 
@@ -258,7 +246,11 @@ La app usa un modelo single-user con `OWNER_ID='owner'` hardcodeado. Los directo
 - ✅ CSP headers, XSS sanitization, deployment guards
 - ✅ CI/CD con 4 jobs (frontend, pipeline, accuracy, docker)
 - ✅ 38 tests frontend (vitest: 13 API routes + 25 componentes React)
+- ✅ 10 tests de infraestructura (vitest: 7 rate-limit + 3 tags API)
 - ✅ 27 tests backend (pytest: scrapers, embed server, pipeline, daily cap)
 - ✅ 7 tests E2E (Playwright: navegación completa)
+- ✅ Rate limiting en todos los API routes (in-memory sliding window)
+- ✅ Tags dinámicos via `/api/tags` (con fallback hardcodeado)
+- ✅ Indicador de truncamiento en infinite scroll
 - ✅ Daily token cap enforcement (DAILY_TOKEN_CAP en pipeline)
 - ✅ Docker Compose para levantar todo con un solo comando

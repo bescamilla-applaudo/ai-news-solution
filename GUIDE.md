@@ -929,7 +929,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu \
     -r requirements.txt
 
-COPY . .
+COPY . ./worker/
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD curl -f http://localhost:8001/health || exit 1
@@ -939,7 +939,10 @@ USER worker
 CMD ["python", "-m", "worker.main"]
 ```
 
-**Optimización aplicada:** PyTorch CPU-only reduce la imagen en ~3 GB. No hay GPU disponible en Railway hobby tier.
+**Optimizaciones aplicadas:**
+- PyTorch CPU-only reduce la imagen en ~3 GB.
+- `COPY . ./worker/` preserva la estructura de paquete Python (el contexto de build es `./worker`).
+- `worker/.dockerignore` excluye `.venv/`, `__pycache__/`, `.env` y `tests/` del contexto.
 
 ### Variables de entorno en producción
 

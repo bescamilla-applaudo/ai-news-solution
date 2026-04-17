@@ -381,16 +381,19 @@ jobs:
 ```dockerfile
 FROM python:3.11-slim
 WORKDIR /app
-RUN useradd --create-home worker
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential libpq-dev curl && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
 RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu -r requirements.txt
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
-COPY . .
+COPY . ./worker/
+RUN useradd --create-home --shell /bin/bash --uid 1000 worker
 USER worker
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+  CMD curl -f http://localhost:8001/health || exit 1
 CMD ["python", "-m", "worker.main"]
 ```
 
-> **Nota:** Se usa PyTorch CPU-only (`torch==2.11.0+cpu`) en lugar del build CUDA, lo que reduce la imagen del worker en ~3 GB.
+> **Nota:** `COPY . ./worker/` preserves the Python package structure since the build context is `./worker`. PyTorch CPU-only reduces the image by ~3 GB. `.dockerignore` excludes `.venv/`, `__pycache__/`, `.env`, and `tests/` from the build context.
 
 ### Frontend Dockerfile
 
@@ -401,13 +404,14 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY . .
-RUN useradd --create-home --shell /bin/bash --uid 1001 nextjs
+RUN useradd --create-home --shell /bin/bash --uid 1001 nextjs \
+  && mkdir -p /app/.next && chown -R nextjs:nextjs /app/.next
 USER nextjs
 EXPOSE 3000
 CMD ["pnpm", "dev", "--hostname", "0.0.0.0"]
 ```
 
-> Used by `docker-compose.yml` for the frontend service. Runs as non-root user with hot-reload support.
+> Runs as non-root user. `.next` directory is pre-created with correct ownership. Root `.dockerignore` excludes `node_modules/`, `worker/.venv/`, `.next/`, and test files from the build context.
 
 ---
 

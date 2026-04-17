@@ -1,115 +1,36 @@
-# KNOWN-ISSUES.md — Pendientes y Roadmap
+# KNOWN-ISSUES.md — Issues Pendientes
 
 > AI News Intelligence Platform  
-> Última actualización: 17 de abril de 2026 · Estado actual: **~95% completo**
+> Última actualización: 17 de abril de 2026
 
 ---
 
-## 🟡 Importantes (calidad y operabilidad)
+## 1. Sin refresh manual de noticias en la página principal
 
-### 1. Dead Letter Queue (DLQ) para Celery
+No existe un botón ni mecanismo para que el usuario refresque el feed de noticias manualmente desde la página principal. La única forma de ver contenido nuevo es recargar la página del navegador.
 
-Los tasks de Celery que fallan después de 3 reintentos se pierden silenciosamente. No hay tabla ni UI para inspeccionar o reintentar.
-
-**Qué implementar:**
-- Tabla `failed_tasks (id, task_name, args, kwargs, exception, traceback, failed_at)`.
-- Signal handler `task_failure` en Celery para capturar y guardar.
-- Vista en `/admin/tasks` para inspeccionar y reintentar.
-
-**Esfuerzo estimado:** 3 horas.
+**Impacto:** El usuario no tiene visibilidad de cuándo hay artículos nuevos disponibles sin recargar manualmente.
 
 ---
 
-### 2. Guía de deployment a producción
+## 2. Suscripción de correos sin validación end-to-end
 
-No hay guía para desplegar en Railway (worker) + Vercel (frontend). No existen archivos `railway.json`, `vercel.json` ni `.env.production.example`.
+El endpoint `/api/email-subscribe` y el componente `EmailSubscribe` están implementados, pero no se ha validado completamente el flujo de entrega del weekly brief por correo electrónico. Requiere configurar `RESEND_API_KEY` y verificar que los emails se reciban correctamente.
 
-**Qué implementar:**
-- Guía paso a paso en `DEPLOYMENT.md`.
-- `railway.json` con configuración del worker.
-- `.env.production.example` con todas las variables requeridas.
-
-**Esfuerzo estimado:** 3 horas.
+**Impacto:** La funcionalidad de suscripción puede no estar operativa en producción.
 
 ---
 
-## 🟢 Deseables (pulido y mejora)
+## 3. Sin interfaz para agregar fuentes de información
 
-### 3. Toggle Dark/Light mode
+Las 5 fuentes de datos (HuggingFace, OpenAI, DeepMind, Arxiv, Hacker News) están hardcodeadas en los scrapers. No hay UI ni API para agregar nuevas fuentes, APIs externas, o feeds RSS personalizados sin modificar código.
 
-La clase `dark` está hardcodeada en `app/layout.tsx`. No hay toggle ni persistencia de preferencia del usuario.
-
-**Esfuerzo estimado:** 1 hora.
+**Impacto:** Expandir la cobertura de noticias requiere intervención directa en el código fuente.
 
 ---
 
-### 4. Soft-delete para artículos descartados
+## 4. Tags dinámicos no generan noticias con tags nuevos
 
-Los artículos con `is_filtered=false` se eliminan permanentemente después de 30 días. No se puede auditar lo que fue descartado.
+El pipeline LLM genera tags sugeridos por IA y estos aparecen correctamente en la interfaz, pero los artículos nuevos no se están clasificando con los tags generados dinámicamente. El filtro por tags nuevos no retorna resultados.
 
-**Qué implementar:** Columna `deleted_at` en `news_items`, trigger de soft-delete.
-
-**Esfuerzo estimado:** 1 hora.
-
----
-
-### 5. Audit log para cleanup jobs
-
-`worker/tasks/cleanup_db.py` ejecuta la limpieza periódica pero los resultados solo se loggean a stdout. No hay tracking en base de datos.
-
-**Qué implementar:** Tabla `cleanup_log (id, function, rows_affected, status, ran_at)`.
-
-**Esfuerzo estimado:** 1.5 horas.
-
----
-
-### 6. Tracking de versión de modelo de embeddings
-
-No hay registro de qué versión del modelo de embeddings se usó para cada artículo. Si el modelo se actualiza, los embeddings viejos quedan incompatibles sin forma de detectar cuáles son.
-
-**Qué implementar:** Columna `embedding_model TEXT DEFAULT 'all-MiniLM-L6-v2'` en `news_items`.
-
-**Esfuerzo estimado:** 30 minutos.
-
----
-
-### 7. Endpoint de exportación `/api/export`
-
-No hay forma de exportar artículos a JSON o CSV.
-
-**Esfuerzo estimado:** 2 horas.
-
----
-
-### 8. Autenticación multi-usuario (decisión de diseño)
-
-La app usa un modelo single-user con `OWNER_ID='owner'` hardcodeado. Si se quisiera auth multi-usuario, habría que implementar flujo completo con Supabase Auth.
-
-**Nota:** Esto es una decisión de arquitectura, no un bug. Documentado en `ARCHITECTURE.md`.
-
----
-
-## 📊 Resumen
-
-| Prioridad | Pendientes | Esfuerzo restante |
-|-----------|------------|-------------------|
-| 🟡 Importantes | 2 | ~6 horas |
-| 🟢 Deseables | 6 | ~7 horas |
-| **Total** | **8 pendientes** | **~13 horas** |
-
----
-
-## ✅ Resueltos (referencia)
-
-- `/api/unsubscribe` — HMAC-SHA256 validation, HTML confirmation page (7 tests)
-- `/api/email-subscribe` — RFC 5322 validation, upsert, UI component (10 tests)
-- Sentry error tracking — `@sentry/nextjs` + `sentry-sdk` (frontend + worker)
-- Structured logging — `structlog` con JSON en producción, coloreado en desarrollo
-- Rate limiting — in-memory sliding window en todos los API routes (7 tests)
-- Tags dinámicos — `GET /api/tags` + LLM-powered tag generation en pipeline
-- Tests de componentes React — 25 tests (ArticleCard, WatchlistManager, NewsFeed)
-- Tests E2E — 7 Playwright tests de navegación
-- DAILY_TOKEN_CAP enforcement — 5 pytest tests
-- ARIA accessibility — roles, labels, landmarks en todos los componentes
-- Indicador de truncamiento en infinite scroll
-- CSP headers, XSS sanitization, deployment guards
+**Impacto:** Los tags dinámicos son visibles pero no funcionales como criterio de filtrado en el feed.

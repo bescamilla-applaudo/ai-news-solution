@@ -56,6 +56,8 @@ docker compose up --build
 
 Esto levanta **4 servicios**: Redis, embed-server, worker (APScheduler + Celery), y frontend (Next.js).
 
+> Los archivos `.dockerignore` excluyen `node_modules/`, `.venv/`, `.next/` y tests del contexto de build. Rebuilds típicos toman ~10 segundos.
+
 Abre **http://localhost:3000** — sin login, acceso directo.
 
 > Para modo detached: `docker compose up --build -d` y luego `docker compose logs -f` para ver logs.

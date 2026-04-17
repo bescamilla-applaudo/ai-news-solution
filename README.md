@@ -136,7 +136,7 @@ supabase start --exclude edge-runtime,studio,mailpit,logflare,vector
 docker compose up --build
 ```
 
-> See [RUNBOOK.md](RUNBOOK.md) for detailed startup/shutdown instructions.
+> `.dockerignore` files keep the build context small (~18 KB). Rebuilds take ~10 seconds. See [RUNBOOK.md](RUNBOOK.md) for detailed startup/shutdown instructions.
 
 ---
 
@@ -199,6 +199,8 @@ supabase/migrations/          # SQL migrations
 
 docker-compose.yml            # Full-stack local environment (one command)
 Dockerfile.frontend           # Next.js dev container (node:22-slim, pnpm)
+.dockerignore                 # Excludes node_modules, .venv, .next from builds
+worker/.dockerignore          # Excludes .venv, __pycache__, tests from worker builds
 
 __tests__/                    # Frontend tests (Vitest)
 ├── api/                      #   API route tests (33 tests)

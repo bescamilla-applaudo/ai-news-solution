@@ -93,8 +93,8 @@
 | **Testing** | 9/10 | 96 tests (65 vitest + 24 pytest + 7 Playwright): API routes, React components, scrapers, embed server, pipeline accuracy, daily cap, E2E. |
 | **Código** | 9/10 | TypeScript strict + Python type hints. ARIA accessibility, AbortController, per-tag inflight, deployment guards, dynamic tags. |
 | **Documentación** | 9/10 | ARCHITECTURE.md, RUNBOOK.md, GUIDE.md, README.md, IMPROVEMENTS.md, KNOWN-ISSUES.md — actualizado y consistente. |
-| **DevOps/CI** | 8/10 | CI con 4 jobs. HEALTHCHECK en Dockerfile. Docker Compose. Falta guía de deployment a producción. |
-| **UX** | 8/10 | Dark mode, infinite scroll, Cmd+K search, score bars, ARIA accessibility, email subscribe. Falta dark/light toggle. |
+| **DevOps/CI** | 9/10 | CI con 4 jobs. HEALTHCHECK en Dockerfile. Docker Compose funcional con `.dockerignore`. Falta guía de deployment a producción. |
+| **UX** | 8/10 | Dark mode, infinite scroll, Cmd+K search, score bars, ARIA accessibility, email subscribe. |
 | **Costos** | 10/10 | $0 en LLM + embeddings. Arquitectura diseñada para free-tier. |
 | **Innovación** | 9/10 | LangGraph pipeline agentivo, embeddings locales, noise filter multi-LLM, pgvector search, LLM dynamic tags. |
 | **Producción** | 7/10 | Sentry, rate limiting, structured logging, HMAC auth. Falta DLQ y deployment guide. |
@@ -144,89 +144,12 @@ Sentry, structured logging, ARIA accessibility, rate limiting, dynamic tags, cri
 - ✅ `/api/unsubscribe` + `/api/email-subscribe` + UI
 - ✅ 17 nuevos tests (65 vitest total)
 
-### Iteración 5 — "Production-Deploy" (pendiente)
-Deployment guide + DLQ.
-- DLQ + admin panel para failed tasks
-- Deployment guide (Railway + Vercel)
-- `.env.production.example`
+### Iteración 5 — "Docker-Ready" ✅ Completada
+Fixes de Docker Compose para que el stack completo funcione con un solo comando.
+- ✅ Worker Dockerfile: `COPY . ./worker/` para preservar estructura de paquete Python
+- ✅ Frontend Dockerfile: permisos de `.next/` para usuario non-root
+- ✅ `.dockerignore` (root + worker): reduce contexto de build de 5 GB a ~18 KB
+- ✅ Docker Compose embed-server command actualizado
+- ✅ Build time: de 8+ minutos a ~10 segundos en rebuilds
 
-Esto llevaría el proyecto de 9.5 a ~9.8.
 
----
-
-## Archivos Modificados en las Sesiones Anteriores (Referencia)
-
-### Sesión 1-2 (Auditoría de Seguridad)
-- `next.config.ts` — Security headers
-- `components/code-block.tsx` — XSS fix (hast-util-to-jsx-runtime)
-- `app/api/**/*.ts` — Error sanitization, self-fetch removal
-- `worker/scrapers/rss.py` — defusedxml + bleach
-- `worker/pipeline/graph.py` — JSON parsing resiliente
-
-### Sesión 3 (Limpieza)
-- Eliminados: `app/login/`, `app/actions/`, `app/api/auth/`, `hooks/`, `CLAUDE.md`, SVGs
-- Reescritos: `README.md`, `ARCHITECTURE.md`, `RUNBOOK.md`
-- Corregidos: test fixtures, source names, pyproject.toml
-
-### Sesión 4 (Optimización)
-- `worker/requirements.txt` — PyTorch CPU-only pinned
-- `worker/Dockerfile` — CPU-only index
-- `worker/pipeline/graph.py` — `_openrouter_chat()` retry con backoff
-- `setup-docker.sh` — Redis 127.0.0.1, Supabase exclude studio/mailpit/analytics
-- Creados: `GUIDE.md`
-
-### Sesión 5-6 (Iteración 1 + 2)
-
-**Iteración 1 — P0 Bug Fixes:**
-- `app/api/search/route.ts` — HTTP 503, query validation (max 200 chars), deployment guard
-- `app/api/watchlist/route.ts` — Deployment guard
-- `app/api/admin/usage/route.ts` — Deployment guard
-- `app/api/news/route.ts` — Deployment guard
-- `app/api/article/[id]/route.ts` — Deployment guard
-- `app/api/article/[id]/related/route.ts` — Deployment guard
-- `components/command-palette.tsx` — AbortController
-- `app/search/page.tsx` — AbortController + 503 handling
-- `components/watchlist-manager.tsx` — Per-tag inflight Set
-- `worker/tasks/weekly_brief.py` — bleach + HMAC-SHA256 unsubscribe
-- Creado: `lib/guards.ts`
-
-**Iteración 2 — Security, Testing, CI:**
-- `next.config.ts` — CSP header
-- Todas las API routes — Cache-Control headers
-- `worker/embed_server.py` — Healthcheck real (verifica modelo)
-- `worker/Dockerfile` — HEALTHCHECK instruction
-- `.github/workflows/ci.yml` — 4 jobs
-- Creados: `vitest.config.ts`, `__tests__/api/search.test.ts`, `__tests__/api/news.test.ts`, `__tests__/api/watchlist.test.ts`, `worker/tests/scrapers/test_rss.py`, `worker/tests/scrapers/test_hn.py`, `worker/tests/scrapers/test_arxiv.py`, `worker/tests/test_embed_server.py`
-
-**Documentación:**
-- Actualizados: `ARCHITECTURE.md`, `RUNBOOK.md`, `GUIDE.md`, `README.md`, `IMPROVEMENTS.md`
-- Creado: `worker/.env.example`
-
-### Sesión 7-8 (Iteración 3 — Testing + ModelPool + DAILY_TOKEN_CAP)
-
-**ModelPool + Frontend fixes:**
-- `worker/pipeline/graph.py` — Thread-safe `ModelPool` class, 9 free models across 3 pools, auto-rotation on 429
-- `components/watchlist-manager.tsx` — `router.refresh()` fix for re-render
-
-**React Component Tests (25 tests):**
-- `__tests__/components/article-card.test.tsx` — 10 tests (render, score bars, colors, minimal mode)
-- `__tests__/components/watchlist-manager.test.tsx` — 8 tests (toggle, rollback, inflight, error states)
-- `__tests__/components/news-feed.test.tsx` — 7 tests (loading, error, empty, tag filter)
-- `__tests__/setup.ts` — Testing Library + jest-dom + cleanup
-
-**Playwright E2E:**
-- `playwright.config.ts` — Chromium, webServer auto-start
-- `e2e/navigation.spec.ts` — 7 tests (home (3), search (2), article detail, watchlist)
-
-**DAILY_TOKEN_CAP enforcement:**
-- `worker/pipeline/graph.py` — `_check_daily_token_cap()`, `DailyTokenCapExceeded` exception
-- `worker/tests/pipeline/test_daily_cap.py` — 5 tests
-
-**Config updates:**
-- `vitest.config.ts` — jsdom, @vitejs/plugin-react, setup file, `.tsx` support
-- `package.json` — `test:e2e` and `test:e2e:ui` scripts, testing-library deps
-- `.env.local.example` — Created (frontend env template)
-
-**Documentación:**
-- Reescrito: `README.md` (professional, comprehensive setup guide)
-- Actualizados: `ARCHITECTURE.md`, `RUNBOOK.md`, `IMPROVEMENTS.md`, `KNOWN-ISSUES.md`, `GUIDE.md`

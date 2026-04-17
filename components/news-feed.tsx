@@ -69,9 +69,10 @@ export function NewsFeed() {
   return (
     <div className="space-y-4">
       {/* Tag filter bar */}
-      <div className="flex flex-wrap gap-2">
+      <nav aria-label="Filter articles by tag" className="flex flex-wrap gap-2" role="toolbar">
         <button
           onClick={() => setActiveTag(null)}
+          aria-pressed={activeTag === null}
           className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
             activeTag === null
               ? 'bg-zinc-100 text-zinc-900 border-zinc-100'
@@ -84,6 +85,7 @@ export function NewsFeed() {
           <button
             key={tag}
             onClick={() => setActiveTag(tag === activeTag ? null : tag)}
+            aria-pressed={activeTag === tag}
             className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
               activeTag === tag
                 ? 'bg-zinc-100 text-zinc-900 border-zinc-100'
@@ -93,7 +95,7 @@ export function NewsFeed() {
             {tag}
           </button>
         ))}
-      </div>
+      </nav>
 
       {/* Loading skeletons */}
       {isLoading && (
@@ -112,12 +114,12 @@ export function NewsFeed() {
 
       {/* Article list */}
       {!isLoading && articles.length === 0 && (
-        <p className="text-sm text-zinc-500 text-center py-12">
+        <p className="text-sm text-zinc-500 text-center py-12" role="status">
           No articles found{activeTag ? ` for tag "${activeTag}"` : ''}.
         </p>
       )}
 
-      <div className="space-y-3">
+      <div className="space-y-3" role="feed" aria-label="AI news articles" aria-busy={isLoading || isFetchingNextPage}>
         {articles.map((article) => (
           <ArticleCard key={article.id} article={article} />
         ))}

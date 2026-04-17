@@ -29,9 +29,12 @@ RSS/API Sources → Scraper (APScheduler) → Celery Queue → LangGraph Pipelin
 - **Impact scoring** — Articles ranked 1–10 on developer workflow impact and technical depth
 - **Implementation guides** — AI-generated step-by-step implementation with validated code snippets
 - **Technology watchlist** — Follow specific technologies (LangGraph, RAG, Claude, etc.)
+- **Email digest** — Weekly intelligence brief with subscribe/unsubscribe via HMAC-secured endpoints
+- **Error tracking** — Sentry integration for both Next.js frontend and Python worker
+- **Structured logging** — JSON logs in production via structlog, colored console in development
+- **ARIA accessibility** — Roles, labels, and landmarks on all interactive components
+- **Rate limiting** — In-memory sliding-window rate limiter on all API routes
 - **Daily token cap** — Configurable daily LLM usage budget to prevent cost overruns
-- **Weekly email digest** — Auto-generated intelligence brief via Resend (optional)
-- **Data retention** — Automated cleanup of old/discarded articles (30d/90d/6mo)
 
 ---
 
@@ -46,7 +49,7 @@ RSS/API Sources → Scraper (APScheduler) → Celery Queue → LangGraph Pipelin
 | Embeddings | sentence-transformers/all-MiniLM-L6-v2 — **local, $0** |
 | Database | Supabase (PostgreSQL 15 + pgvector) |
 | Queue | Redis 7 (Docker) |
-| Testing | Vitest + Testing Library (48 tests) · Pytest (27 tests) · Playwright E2E (7 tests) |
+| Testing | Vitest + Testing Library (65 tests) · Pytest (27 tests) · Playwright E2E (7 tests) |
 | CI/CD | GitHub Actions (4 jobs) |
 
 ---
@@ -145,7 +148,13 @@ app/                          # Next.js App Router
 │   ├── news/route.ts         #     Paginated feed with tag filtering
 │   ├── search/route.ts       #     Semantic search via pgvector
 │   ├── watchlist/route.ts    #     Watchlist CRUD (POST/DELETE)
+│   ├── tags/route.ts         #     Dynamic tags list
+│   ├── email-subscribe/     #     Email subscription (POST/GET)
+│   │   └── route.ts
+│   ├── unsubscribe/         #     HMAC-validated unsubscribe (GET)
+│   │   └── route.ts
 │   ├── article/[id]/         #     Article detail + related articles
+│   │   └── related/route.ts
 │   └── admin/usage/route.ts  #     LLM token usage dashboard
 ├── article/[id]/page.tsx     #   Article detail view
 ├── search/page.tsx           #   Full search page
@@ -157,6 +166,7 @@ components/                   # React UI components
 ├── news-feed.tsx             #   Infinite scroll feed + tag filters
 ├── watchlist-manager.tsx     #   Optimistic toggle watchlist
 ├── command-palette.tsx       #   Cmd+K semantic search
+├── email-subscribe.tsx       #   Weekly brief email subscription
 └── ui/                       #   Shadcn/UI primitives
 
 lib/                          # Shared utilities
@@ -175,7 +185,8 @@ worker/                       # Python agentic pipeline
 │   ├── process_article.py    #     Single article processing
 │   └── weekly_brief.py       #     Weekly email digest (Resend)
 ├── embed_server.py           #   Local embedding HTTP server (port 8001)
-├── main.py                   #   APScheduler entry point
+├── logging_config.py         #   Structured logging (structlog, JSON/dev)
+├── main.py                   #   APScheduler entry point + Sentry init
 ├── celery_app.py             #   Celery configuration
 └── db.py                     #   Supabase client (Python)
 
@@ -183,18 +194,24 @@ supabase/migrations/          # SQL migrations
 ├── 0001_initial_schema.sql   #   Tables, indexes, RLS policies
 ├── 0002_seed_articles.sql    #   10 seed articles for UI validation
 ├── 0003_embeddings_384.sql   #   Migrate to 384-dim embeddings
-└── 0004_data_retention.sql   #   Cleanup/archive RPC functions
+├── 0004_data_retention.sql   #   Cleanup/archive RPC functions
+└── 0005_dynamic_tags.sql     #   Additional seed tags for LLM dynamic tagging
 
 docker-compose.yml            # Full-stack local environment (one command)
 Dockerfile.frontend           # Next.js dev container (node:22-slim, pnpm)
 
 __tests__/                    # Frontend tests (Vitest)
-├── api/                      #   API route tests (13 tests)
+├── api/                      #   API route tests (33 tests)
 ├── components/               #   Component tests (25 tests)
+├── lib/                      #   Infrastructure tests (7 tests)
 └── setup.ts                  #   Test setup (jsdom + jest-dom)
 
 e2e/                          # End-to-end tests (Playwright)
 └── navigation.spec.ts        #   Page navigation flows
+
+sentry.client.config.ts       # Sentry client-side init
+sentry.server.config.ts       # Sentry server-side init
+sentry.edge.config.ts         # Sentry edge runtime init
 
 .github/workflows/ci.yml      # CI: typecheck, lint, vitest, pytest, docker
 ```
@@ -203,10 +220,10 @@ e2e/                          # End-to-end tests (Playwright)
 
 ## Testing
 
-The project has **82 automated tests** across three layers:
+The project has **96 automated tests** across three layers:
 
 ```bash
-# Frontend — 48 tests (API routes + components + infrastructure)
+# Frontend — 65 tests (API routes + components + infrastructure)
 pnpm test
 
 # Worker — 27 tests (scrapers, embed server, pipeline, daily cap)
@@ -219,7 +236,7 @@ pnpm test:e2e
 
 | Suite | Tests | What it covers |
 |-------|-------|---------------|
-| Vitest — API routes | 16 | `/api/news`, `/api/search`, `/api/watchlist`, `/api/tags` responses and edge cases |
+| Vitest — API routes | 33 | `/api/news`, `/api/search`, `/api/watchlist`, `/api/tags`, `/api/unsubscribe`, `/api/email-subscribe` |
 | Vitest — Components | 25 | `ArticleCard` (10), `WatchlistManager` (8), `NewsFeed` (7) — render, interaction, error states |
 | Vitest — Infrastructure | 7 | Rate limiter sliding window, IP extraction, key isolation |
 | Pytest — Scrapers | 14 | RSS parsing, HTML sanitization, HTTP error handling, Arxiv/HN mocks |

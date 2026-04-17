@@ -147,6 +147,7 @@ Una plataforma de inteligencia de noticias de IA que **automáticamente:**
 │  news_items (artículos + embeddings 384D + metadata)                        │
 │  tech_tags / news_item_tags (taxonomía controlada)                          │
 │  user_watchlist (single-owner)                                               │
+│  email_subscriptions (suscripción a weekly brief)                           │
 │  llm_usage_log (telemetría de tokens)                                       │
 │                                                                              │
 │  RPC: match_articles() — búsqueda semántica por cosine similarity           │
@@ -159,12 +160,15 @@ Una plataforma de inteligencia de noticias de IA que **automáticamente:**
 │              NEXT.JS FRONTEND + API ROUTES (Terminal 2)                       │
 │                                                                              │
 │  API Layer:                                                                  │
-│    /api/news         → Feed paginado (impact_score DESC)                    │
-│    /api/search       → Embed query → pgvector similarity                    │
-│    /api/article/[id] → Artículo individual                                  │
+│    /api/news              → Feed paginado (impact_score DESC)               │
+│    /api/search            → Embed query → pgvector similarity               │
+│    /api/article/[id]      → Artículo individual                             │
 │    /api/article/[id]/related → Top 5 por similitud vectorial                │
-│    /api/watchlist    → GET/POST/DELETE (OWNER_ID='owner')                   │
-│    /api/admin/usage  → Telemetría de tokens LLM                             │
+│    /api/watchlist         → GET/POST/DELETE (OWNER_ID='owner')              │
+│    /api/tags              → Tags dinámicos (tech_tags table)                │
+│    /api/email-subscribe   → GET status / POST suscripción                   │
+│    /api/unsubscribe       → Desuscripción HMAC-validated                    │
+│    /api/admin/usage       → Telemetría de tokens LLM                        │
 │                                                                              │
 │  UI Layer:                                                                   │
 │    /              → NewsFeed (infinite scroll + tag filter)                  │
@@ -434,6 +438,14 @@ Muestra:
 - **AbortController:** Cada keystroke cancela la request anterior via `AbortController.abort()`, eliminando race conditions de requests obsoletos
 - **Degradación graceful:** Si el embed server no está disponible (HTTP 503), muestra estado de error
 
+#### `EmailSubscribe` — Suscripción a weekly brief
+
+- Formulario inline para suscribirse al resumen semanal por email
+- React Query (`useMutation` + `useQuery`) para estado de suscripción
+- Estados: formulario de email (no suscrito), estado activo (suscrito)
+- Validación de email client-side antes de enviar
+- API: `GET/POST /api/email-subscribe`
+
 #### `WatchlistManager` — Gestión de tecnologías seguidas
 
 - Lista de todos los tags con toggles
@@ -450,6 +462,9 @@ Muestra:
 | `/api/article/[id]` | GET | — | Artículo con tags joinados |
 | `/api/article/[id]/related` | GET | — | Top 5 artículos similares |
 | `/api/watchlist` | GET/POST/DELETE | `tag_id` | Watchlist del owner |
+| `/api/tags` | GET | — | Tags dinámicos (tech_tags table) |
+| `/api/email-subscribe` | GET/POST | `email` | Suscripción a weekly brief |
+| `/api/unsubscribe` | GET | `uid`, `token` | Desuscripción HMAC-validated (HTML) |
 | `/api/admin/usage` | GET | — | Uso de tokens por día y modelo |
 
 ---
@@ -581,7 +596,9 @@ LIMIT match_count;
 | **Sanitización de errores** | Errores del server se loggean full; al cliente solo llegan mensajes genéricos. |
 | **Red aislada** | Embed server y Redis ligados a `127.0.0.1`. Studio, Mailpit y Analytics excluidos del arranque. Worker en Docker corre como non-root. |
 | **RLS** | Los clientes solo pueden leer artículos con `is_filtered = TRUE`. Escritura requiere service role key. |
-| **Rate limiting** | HN scraper con `Semaphore(20)`. Infinite scroll tope 20 páginas. OpenRouter retry con backoff exponencial. |
+| **Rate limiting** | In-memory sliding-window rate limiter (`lib/rate-limit.ts`) en todas las API routes (10-60 req/min por endpoint). HN scraper con `Semaphore(20)`. Infinite scroll tope 20 páginas. OpenRouter retry con backoff exponencial. |
+| **Error tracking** | Sentry integrado en frontend (`@sentry/nextjs`) y worker (`sentry-sdk`). DSNs via env vars (`NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_WORKER_DSN`). No-op cuando no están configurados. |
+| **Structured logging** | Worker usa `structlog` con JSON output en producción (`LOG_FORMAT=json`), colored console en desarrollo. Configurado via `worker/logging_config.py`. |
 | **Sin superficie de auth** | Diseño single-user elimina vectores de session fixation, JWT forgery y credential stuffing. |
 
 ---
@@ -691,12 +708,15 @@ ai-news-solution/
 │   ├── watchlist/page.tsx        # Feed personalizado + tag manager
 │   ├── admin/usage/page.tsx      # Dashboard de tokens LLM
 │   └── api/
-│       ├── news/route.ts         # GET: feed paginado
-│       ├── search/route.ts       # GET: embed → pgvector similarity
+│       ├── news/route.ts         # GET: feed paginado (60 req/min)
+│       ├── search/route.ts       # GET: embed → pgvector similarity (10 req/min)
+│       ├── tags/route.ts         # GET: tags dinámicos desde tech_tags (30 req/min)
 │       ├── article/[id]/
 │       │   ├── route.ts          # GET: artículo individual
 │       │   └── related/route.ts  # GET: top 5 similares
-│       ├── watchlist/route.ts    # GET/POST/DELETE: watchlist
+│       ├── watchlist/route.ts    # GET/POST/DELETE: watchlist (30 req/min)
+│       ├── email-subscribe/route.ts # GET status / POST subscribe (5 req/min)
+│       ├── unsubscribe/route.ts  # GET: HMAC-validated unsubscribe (10 req/min)
 │       └── admin/usage/route.ts  # GET: uso de tokens
 │
 ├── components/
@@ -704,40 +724,51 @@ ai-news-solution/
 │   ├── article-card.tsx          # Tarjeta de artículo (scores, tags, time)
 │   ├── code-block.tsx            # Syntax highlighting con Shiki (seguro)
 │   ├── command-palette.tsx       # Cmd+K búsqueda global
+│   ├── email-subscribe.tsx       # Formulario de suscripción a weekly brief
 │   ├── watchlist-manager.tsx     # Toggle de tags con optimistic updates
 │   ├── providers/
 │   │   └── query-provider.tsx    # TanStack React Query provider
 │   └── ui/                      # Shadcn/UI primitives
-│       ├── button.tsx, card.tsx, badge.tsx, dialog.tsx...
+│       ├── accordion.tsx, badge.tsx, button.tsx, card.tsx, command.tsx,
+│       │   dialog.tsx, input.tsx, input-group.tsx, progress.tsx,
+│       │   skeleton.tsx, textarea.tsx
 │
 ├── lib/
 │   ├── guards.ts                 # Deployment guard: requireSupabase() → 503
+│   ├── rate-limit.ts             # In-memory sliding-window rate limiter
 │   ├── supabase.ts               # Singleton del cliente Supabase (service role)
 │   ├── database.types.ts         # Tipos TypeScript generados del schema
 │   └── utils.ts                  # cn() helper (clsx + tailwind-merge)
 │
 ├── __tests__/                    # Tests frontend (vitest)
-│   ├── api/                      # Tests de API routes
+│   ├── api/                      # Tests de API routes (33 tests)
 │   │   ├── search.test.ts        # 4 tests: queries, 503
 │   │   ├── news.test.ts          # 3 tests: paginación, caching
 │   │   ├── watchlist.test.ts     # 6 tests: CRUD, validación
 │   │   ├── tags.test.ts          # 3 tests: lista, caching
 │   │   ├── unsubscribe.test.ts   # 7 tests: HMAC, validation
 │   │   └── email-subscribe.test.ts # 10 tests: subscribe, validation
-│   ├── components/               # Tests de componentes React
+│   ├── components/               # Tests de componentes React (25 tests)
 │   │   ├── article-card.test.tsx # 10 tests: render, score bars, minimal
 │   │   ├── watchlist-manager.test.tsx # 8 tests: toggle, rollback, inflight
 │   │   └── news-feed.test.tsx    # 7 tests: loading, error, tag filter
+│   ├── lib/                      # Tests de infraestructura (17 tests)
+│   │   └── rate-limit.test.ts    # 17 tests: sliding window, IP extraction
 │   └── setup.ts                  # Testing Library + jest-dom + cleanup
 │
 ├── e2e/                          # Tests E2E (Playwright)
 │   └── navigation.spec.ts       # 7 tests: home, search, article, watchlist
+│
+├── sentry.client.config.ts       # Sentry config browser
+├── sentry.server.config.ts       # Sentry config server
+├── sentry.edge.config.ts         # Sentry config edge runtime
 │
 ├── worker/                       # Pipeline Python
 │   ├── main.py                   # Entry point: APScheduler + Celery startup
 │   ├── celery_app.py             # Configuración de Celery (broker, retries)
 │   ├── db.py                     # Cliente Supabase Python (service role)
 │   ├── embed_server.py           # HTTP server local (puerto 8001)
+│   ├── logging_config.py         # structlog: JSON (prod) / colored (dev)
 │   ├── pipeline/
 │   │   └── graph.py              # LangGraph pipeline completo (7 nodos)
 │   ├── scrapers/
@@ -747,7 +778,8 @@ ai-news-solution/
 │   │   └── hn.py                 # Hacker News Firebase API
 │   ├── tasks/
 │   │   ├── process_article.py    # Celery task → LangGraph pipeline
-│   │   └── weekly_brief.py       # Email digest semanal (Resend)
+│   │   ├── weekly_brief.py       # Email digest semanal (Resend)
+│   │   └── cleanup_db.py         # Retención: borrar descartados, archivar viejos
 │   ├── tests/
 │   │   ├── scrapers/
 │   │   │   ├── test_rss.py           # 6 tests: HTML strip, HTTP error, parsing
@@ -755,8 +787,10 @@ ai-news-solution/
 │   │   │   └── test_arxiv.py         # 2 tests: HTTP error, Atom feed
 │   │   ├── test_embed_server.py      # 5 tests: health, embed, 404
 │   │   └── pipeline/
-│   │       └── test_categorizer.py  # 20 fixtures, ≥95% accuracy target
+│   │       ├── test_categorizer.py   # 20 fixtures, ≥95% accuracy target
+│   │       └── test_daily_cap.py     # 5 tests: cap enforcement, null handling
 │   ├── Dockerfile                # CPU-only PyTorch, HEALTHCHECK, non-root
+│   ├── .dockerignore             # Excluye .venv, __pycache__, .env, tests
 │   ├── requirements.txt          # Pinned deps + CPU PyTorch index
 │   └── .env                      # OPENROUTER_API_KEY, SUPABASE keys, Redis, HMAC_SECRET
 │
@@ -764,13 +798,33 @@ ai-news-solution/
 │   └── migrations/
 │       ├── 0001_initial_schema.sql   # Tablas, RLS, índices, RPC
 │       ├── 0002_seed_articles.sql    # 10 artículos de ejemplo
-│       └── 0003_embeddings_384.sql   # Migración de 1536→384 dims
+│       ├── 0003_embeddings_384.sql   # Migración de 1536→384 dims
+│       ├── 0004_data_retention.sql   # Funciones de retención/limpieza
+│       └── 0005_dynamic_tags.sql     # Tags dinámicos (LLM-generated)
 │
+├── .github/
+│   ├── workflows/ci.yml          # CI: frontend + pipeline + accuracy + docker
+│   ├── copilot-instructions.md   # Reglas de Copilot para el proyecto
+│   ├── instructions/             # Instrucciones por área (.instructions.md)
+│   │   ├── api-routes.instructions.md
+│   │   ├── react-components.instructions.md
+│   │   ├── pipeline.instructions.md
+│   │   ├── scrapers.instructions.md
+│   │   └── migrations.instructions.md
+│   ├── skills/code-review/       # Skill de code review estructurado
+│   └── reviews/                  # Reportes de auditoría generados
+│
+├── Dockerfile.frontend           # Next.js dev server, non-root (node:22-slim)
+├── docker-compose.yml            # 4 servicios: redis, embed-server, worker, frontend
+├── .dockerignore                 # Excluye node_modules, .next, .env, tests
 ├── setup-docker.sh               # Un comando para levantar infra
 ├── ARCHITECTURE.md               # Arquitectura técnica
 ├── RUNBOOK.md                    # Guía operativa paso a paso
 ├── GUIDE.md                      # ← Este documento
 ├── IMPROVEMENTS.md               # Plan de mejoras y scorecard
+├── KNOWN-ISSUES.md               # Issues conocidos y pendientes
+├── AGENTS.md                     # Reglas para agentes AI (Next.js breaking changes)
+├── CLAUDE.md                     # Instrucciones para Claude
 ├── next.config.ts                # Security headers + CSP
 ├── vitest.config.ts              # Configuración de vitest (@ alias)
 └── package.json                  # pnpm, scripts, dependencias frontend

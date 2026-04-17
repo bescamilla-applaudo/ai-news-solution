@@ -777,7 +777,7 @@ ai-news-solution/
 
 ## 15. Testing y calidad
 
-El proyecto tiene **65 tests automatizados** distribuidos en 3 capas: unit tests de componentes y API (vitest), unit tests de pipeline y scrapers (pytest), y tests E2E (Playwright).
+El proyecto tiene **72 tests automatizados** distribuidos en 3 capas: unit tests de componentes y API (vitest), unit tests de pipeline y scrapers (pytest), y tests E2E (Playwright).
 
 ### Tests del pipeline — Accuracy (Python, requiere API key)
 
@@ -854,12 +854,12 @@ pytest tests/ -v --ignore=tests/pipeline/test_categorizer.py  # 24 tests, sin AP
 
 | Tests | Qué valida |
 |-------|------------|
-| 5 | Home carga con heading, tag filter visible, articles o empty state, search page, watchlist page |
+| 7 | Home: heading visible, tag filter buttons, articles o empty state. Search: página carga, búsqueda retorna resultados o vacío. Article detail: navegación desde home. Watchlist: página carga. |
 
 **Ejecución:**
 ```bash
 pnpm test           # 38 tests vitest (13 API + 25 componentes)
-pnpm test:e2e       # 5 tests Playwright (requiere app corriendo)
+pnpm test:e2e       # 7 tests Playwright (requiere app corriendo)
 pnpm test:e2e:ui    # Playwright en modo UI interactivo
 ```
 
@@ -873,8 +873,8 @@ pnpm test:e2e:ui    # Playwright en modo UI interactivo
 | Embed server | pytest | 5 | Health, embedding, errores |
 | Pipeline accuracy | pytest | 3 | Noise filter ≥95% (requiere API key) |
 | Daily token cap | pytest | 5 | Cap enforcement, null handling |
-| E2E navegación | Playwright | 5 | Flujos de navegación completos |
-| **Total** | | **70** | |
+| E2E navegación | Playwright | 7 | Flujos de navegación completos |
+| **Total** | | **72** | |
 
 ### Calidad del frontend
 
@@ -883,7 +883,7 @@ pnpm test:e2e:ui    # Playwright en modo UI interactivo
 | Type safety | `tsc --noEmit` | `pnpm typecheck` | 0 errores |
 | Linting | ESLint 9 | `pnpm lint` | 0 warnings |
 | Unit + component tests | vitest | `pnpm test` | 38 tests pasando |
-| E2E tests | Playwright | `pnpm test:e2e` | 5 tests pasando |
+| E2E tests | Playwright | `pnpm test:e2e` | 7 tests pasando |
 
 ### CI/CD (GitHub Actions)
 

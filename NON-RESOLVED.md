@@ -129,7 +129,7 @@ Si se agregan nuevos tags en la base de datos, no aparecen en el filtro.
 **Estado:** Configurado y funcional.
 
 - `playwright.config.ts` con base URL y webServer auto-start
-- 5 tests E2E en `e2e/navigation.spec.ts`: Home, Search, Article detail, Watchlist
+- 7 tests E2E en `e2e/navigation.spec.ts`: Home (3), Search (2), Article detail (1), Watchlist (1)
 - Scripts: `pnpm test:e2e` y `pnpm test:e2e:ui`
 
 ---
@@ -259,6 +259,6 @@ La app usa un modelo single-user con `OWNER_ID='owner'` hardcodeado. Los directo
 - ✅ CI/CD con 4 jobs (frontend, pipeline, accuracy, docker)
 - ✅ 38 tests frontend (vitest: 13 API routes + 25 componentes React)
 - ✅ 27 tests backend (pytest: scrapers, embed server, pipeline, daily cap)
-- ✅ 5 tests E2E (Playwright: navigación completa)
+- ✅ 7 tests E2E (Playwright: navegación completa)
 - ✅ Daily token cap enforcement (DAILY_TOKEN_CAP en pipeline)
 - ✅ Docker Compose para levantar todo con un solo comando

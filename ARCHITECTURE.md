@@ -47,7 +47,7 @@ All sources are public — no API keys required for scraping.
 
 - **Zero paid API calls.** LLM inference via OpenRouter free-tier models; embeddings via a local HTTP server backed by sentence-transformers. The entire stack runs free-of-charge — only a free OpenRouter account is required.
 - **Single-user simplicity.** No authentication, no session management. `OWNER_ID = 'owner'` is hardcoded; all routes are implicitly private (local deployment).
-- **Graceful degradation.** If OpenRouter rate-limits or the embed server is unavailable, the frontend continues serving cached data. No user-facing errors.
+- **Graceful degradation.** If OpenRouter rate-limits a model, the `ModelPool` rotates to the next free model automatically. If the embed server is unavailable, `/api/search` returns HTTP 503 with a clear error; the news feed and all other pages continue working normally.
 
 ---
 
@@ -353,7 +353,7 @@ jobs:
 | Linting | ESLint 9 | Zero warnings |
 | Frontend tests | vitest | 38 tests (13 API routes + 25 React components) |
 | Scraper + embed + daily cap tests | pytest | 24 tests (RSS, HN, Arxiv, embed server, daily token cap) |
-| E2E tests | Playwright | 5 tests (navigation flows) |
+| E2E tests | Playwright | 7 tests (navigation flows) |
 | Noise filter accuracy | pytest | 3 tests, ≥95% pass rate (main branch only, requires API keys) |
 | Docker build | `docker build` | Image builds successfully |
 
@@ -381,6 +381,23 @@ CMD ["python", "-m", "worker.main"]
 ```
 
 > **Nota:** Se usa PyTorch CPU-only (`torch==2.11.0+cpu`) en lugar del build CUDA, lo que reduce la imagen del worker en ~3 GB.
+
+### Frontend Dockerfile
+
+```dockerfile
+FROM node:22-slim
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@latest --activate
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY . .
+RUN useradd --create-home --shell /bin/bash --uid 1001 nextjs
+USER nextjs
+EXPOSE 3000
+CMD ["pnpm", "dev", "--hostname", "0.0.0.0"]
+```
+
+> Used by `docker-compose.yml` for the frontend service. Runs as non-root user with hot-reload support.
 
 ---
 

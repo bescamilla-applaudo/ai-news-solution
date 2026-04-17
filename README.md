@@ -46,7 +46,7 @@ RSS/API Sources → Scraper (APScheduler) → Celery Queue → LangGraph Pipelin
 | Embeddings | sentence-transformers/all-MiniLM-L6-v2 — **local, $0** |
 | Database | Supabase (PostgreSQL 15 + pgvector) |
 | Queue | Redis 7 (Docker) |
-| Testing | Vitest + Testing Library (38 tests) · Pytest (27 tests) · Playwright E2E |
+| Testing | Vitest + Testing Library (38 tests) · Pytest (27 tests) · Playwright E2E (7 tests) |
 | CI/CD | GitHub Actions (4 jobs) |
 
 ---
@@ -182,7 +182,11 @@ worker/                       # Python agentic pipeline
 supabase/migrations/          # SQL migrations
 ├── 0001_initial_schema.sql   #   Tables, indexes, RLS policies
 ├── 0002_seed_articles.sql    #   10 seed articles for UI validation
-└── 0003_embeddings_384.sql   #   Migrate to 384-dim embeddings
+├── 0003_embeddings_384.sql   #   Migrate to 384-dim embeddings
+└── 0004_data_retention.sql   #   Cleanup/archive RPC functions
+
+docker-compose.yml            # Full-stack local environment (one command)
+Dockerfile.frontend           # Next.js dev container (node:22-slim, pnpm)
 
 __tests__/                    # Frontend tests (Vitest)
 ├── api/                      #   API route tests (13 tests)
@@ -199,7 +203,7 @@ e2e/                          # End-to-end tests (Playwright)
 
 ## Testing
 
-The project has **65 automated tests** across three layers:
+The project has **72 automated tests** across three layers:
 
 ```bash
 # Frontend — 38 tests (API routes + React components)
@@ -221,7 +225,7 @@ pnpm test:e2e
 | Pytest — Embed server | 5 | Health endpoint, embedding generation, error cases |
 | Pytest — Pipeline | 3 | Categorizer noise filter accuracy (≥95% on 20 fixtures) |
 | Pytest — Daily cap | 5 | Token cap enforcement, null handling, DB queries |
-| Playwright — E2E | 5 | Home, search, article detail, watchlist navigation |
+| Playwright — E2E | 7 | Home (3), Search (2), Article detail (1), Watchlist (1) |
 
 ---
 
